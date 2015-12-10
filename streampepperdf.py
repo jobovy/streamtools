@@ -112,7 +112,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
     def _determine_deltaOmegaTheta_kicks(self,impact_angle,impactb,subhalovel,
                                          timpact,GM,rs,subhalopot):
         """Compute the kicks in frequency-angle space for all impacts"""
-        self._nkicks= len(impactb)
+        self._nKicks= len(impactb)
         self._sgapdfs= []
         # Go through in reverse impact order
         for kk in numpy.argsort(timpact):
@@ -127,3 +127,65 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Store times
         self._timpact= numpy.sort(timpact)
         return None
+
+    def pOparapar(self,Opar,apar):
+        """
+        NAME:
+
+           pOparapar
+
+        PURPOSE:
+
+           return the probability of a given parallel (frequency,angle) offset pair
+
+        INPUT:
+
+           Opar - parallel frequency offset (array)
+
+           apar - parallel angle offset along the stream (scalar)
+
+        OUTPUT:
+
+           p(Opar,apar)
+
+        HISTORY:
+
+           2015-12-09 - Written - Bovy (UofT)
+
+        """
+        if isinstance(Opar,(int,float,numpy.float32,numpy.float64)):
+            Opar= numpy.array([Opar])
+        apar= numpy.tile(apar,(len(Opar)))
+        out= numpy.zeros(len(Opar))
+        # Need to rewind each to each impact sequentially
+        current_Opar= copy.copy(Opar)
+        current_apar= copy.copy(apar)
+        current_timpact= 0.
+        remaining_indx= numpy.ones(len(Opar),dtype='bool')
+        for kk,timpact in enumerate(self._timpact):
+            # Compute ts and where they were at current impact for all
+            ts= current_apar/current_Opar
+            # Evaluate those that have ts < (timpact-current_timpact)
+            afterIndx= remaining_indx*(ts < (timpact-current_timpact))
+            out[afterIndx]=\
+                super(streampepperdf,self).pOparapar(current_Opar[afterIndx],
+                                                     current_apar[afterIndx],
+                                                     tdisrupt=
+                                                     self._tdisrupt\
+                                                         -current_timpact)
+            remaining_indx*= (True-afterIndx)
+            if numpy.sum(remaining_indx) == 0: break
+            # Compute Opar and apar just before this kick for next kick
+            current_apar-= current_Opar*(timpact-current_timpact)
+            dOpar_impact= self._sgapdfs[kk]._kick_interpdOpar(current_apar)
+            current_Opar-= dOpar_impact
+            current_timpact= timpact
+        # Need one last evaluation for before the first kick
+        if numpy.sum(remaining_indx) > 0:
+            # Evaluate
+            out[remaining_indx]=\
+                super(streampepperdf,self).pOparapar(\
+                current_Opar[remaining_indx],current_apar[remaining_indx],
+                tdisrupt=self._tdisrupt-current_timpact)
+        return out
+
