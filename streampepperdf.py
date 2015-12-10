@@ -114,7 +114,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         """Compute the kicks in frequency-angle space for all impacts"""
         self._nkicks= len(impactb)
         self._sgapdfs= []
-        for kk in range(self._nkicks):
+        # Go through in reverse impact order
+        for kk in numpy.argsort(timpact):
             sgdf= copy.deepcopy(self._sgapdfs_coordtransform[timpact[kk]])
             # compute the kick using the pre-computed coordinate transformation
             sgdf._determine_deltav_kick(impact_angle[kk],impactb[kk],
@@ -123,5 +124,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                         self._nKickPoints)
             sgdf._determine_deltaOmegaTheta_kick()
             self._sgapdfs.append(sgdf)
+        # Store times
+        self._timpact= numpy.sort(timpact)
         return None
-
