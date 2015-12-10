@@ -1,6 +1,7 @@
 # The DF of a tidal stream peppered with impacts
 import copy
 import numpy
+from scipy import integrate
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
 class streampepperdf(galpy.df_src.streamdf.streamdf):
@@ -188,4 +189,88 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 current_Opar[remaining_indx],current_apar[remaining_indx],
                 tdisrupt=self._tdisrupt-current_timpact)
         return out
+
+    def density_par(self,dangle,tdisrupt=None):
+        """
+        NAME:
+
+           density_par
+
+        PURPOSE:
+
+           calculate the density as a function of parallel angle, assuming a uniform time distribution up to a maximum time
+
+        INPUT:
+
+           dangle - angle offset
+
+        OUTPUT:
+
+           density(angle)
+
+        HISTORY:
+
+           2015-11-17 - Written - Bovy (UofT)
+
+        """
+        if tdisrupt is None: tdisrupt= self._tdisrupt
+        Tlow= 1./2./self._sigMeanOffset\
+            -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
+        return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
+                                  *(1+T*T)/(1-T*T)**2.\
+                                  *self.pOparapar(T/(1-T*T)\
+                                                      *numpy.sqrt(self._sortedSigOEig[2])\
+                                                      +self._meandO,dangle),
+                              Tlow,1.)[0]
+
+    def meanOmega(self,dangle,oned=False,tdisrupt=None):
+        """
+        NAME:
+
+           meanOmega
+
+        PURPOSE:
+
+           calculate the mean frequency as a function of angle, assuming a uniform time distribution up to a maximum time
+
+        INPUT:
+
+           dangle - angle offset
+
+           oned= (False) if True, return the 1D offset from the progenitor (along the direction of disruption)
+
+        OUTPUT:
+
+           mean Omega
+
+        HISTORY:
+
+           2015-11-17 - Written - Bovy (UofT)
+
+        """
+        if tdisrupt is None: tdisrupt= self._tdisrupt
+        Tlow= 1./2./self._sigMeanOffset\
+            -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
+        num=\
+            integrate.quad(lambda T: (T/(1-T*T)\
+                                          *numpy.sqrt(self._sortedSigOEig[2])\
+                                          +self._meandO)\
+                               *numpy.sqrt(self._sortedSigOEig[2])\
+                               *(1+T*T)/(1-T*T)**2.\
+                               *self.pOparapar(T/(1-T*T)\
+                                                   *numpy.sqrt(self._sortedSigOEig[2])\
+                                                   +self._meandO,dangle),
+                           Tlow,1.)[0]
+        denom=\
+            integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
+                               *(1+T*T)/(1-T*T)**2.\
+                               *self.pOparapar(T/(1-T*T)\
+                                                   *numpy.sqrt(self._sortedSigOEig[2])\
+                                                   +self._meandO,dangle),
+                           Tlow,1.)[0]
+        dO1D= num/denom
+        if oned: return dO1D
+        else:
+            return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
+                *self._sigMeanSign
 
