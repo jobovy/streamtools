@@ -1,6 +1,8 @@
 # The DF of a tidal stream peppered with impacts
+import copy
 import numpy
 import galpy.df_src.streamdf
+import galpy.df_src.streamgapdf
 class streampepperdf(galpy.df_src.streamdf.streamdf):
     """The DF of a tidal stream peppered with impacts"""
     def __init__(self,*args,**kwargs):
@@ -23,11 +25,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
               subhalovel= velocity of the subhalo shape=(nimpact,3)
 
-              impact_angle= angle offset from progenitor at which the impact occurred (rad) ([nimpact])
+              impact_angle= angle offset from progenitor at which the impact occurred (at the impact time; in rad) ([nimpact])
 
-              timpact time since impact (scalar)
+              timpact time since impact ([nimpact])
 
-              Subhalo: specify either 1( mass and size of Plummer sphere or 2( general spherical-potential object (kick is numerically computed)
+              Subhalo: specify either 1( mass and size of Plummer sphere or 2( general spherical-potential object (kick is numerically computed); all kicks need to chose the same option
 
                  1( GM= mass of the subhalo ([nimpact])
 
@@ -57,7 +59,10 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         GM= kwargs.pop('GM',None)
         rs= kwargs.pop('rs',None)
         subhalopot= kwargs.pop('subhalopot',None)
-        timpact= kwargs.pop('timpact',1.)
+        if GM is None: GM= [None for b in impactb]
+        if rs is None: rs= [None for b in impactb]
+        if subhalopot is None: subhalopot= [None for b in impactb]
+        timpact= kwargs.pop('timpact',[1.])
         deltaAngleTrackImpact= kwargs.pop('deltaAngleTrackImpact',None)
         nTrackChunksImpact= kwargs.pop('nTrackChunksImpact',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
@@ -68,8 +73,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         useInterp= kwargs.pop('useInterp',
                               galpy.df_src.streamdf._USEINTERP)
         # Analytical Plummer or general potential?
-        self._general_kick= GM is None or rs is None
-        if self._general_kick and subhalopot is None:
+        self._general_kick= GM[0] is None or rs[0] is None
+        if self._general_kick and numpy.any([sp is None for sp in subhalopot]):
             raise IOError("One of (GM=, rs=) or subhalopot= needs to be set to specify the subhalo's structure")
         if self._general_kick:
             self._subhalopot= subhalopot
@@ -80,27 +85,43 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # stream track (nosetup=True)
         kwargs['nosetup']= True
         super(streampepperdf,self).__init__(*args,**kwargs)
-        # Setup a streamgapdf object to setup the machinery to go between 
-        # (x,v) and (Omega,theta) near the impact
+        # Setup streamgapdf objects to setup the machinery to go between 
+        # (x,v) and (Omega,theta) near the impacts
+        uniq_timpact= list(set(timpact))
+        self._sgapdfs_coordtransform= {}
+        for ti in uniq_timpact:
+            sgapdf_kwargs= copy.deepcopy(kwargs)
+            sgapdf_kwargs['timpact']= ti
+            sgapdf_kwargs['impact_angle']= 1. # only affects a check
+            if not self._leading: sgapdf_kwargs['impact_angle']= -1.
+            sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
+            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
+            sgapdf_kwargs['nKickPoints']= nKickPoints
+            sgapdf_kwargs['GM']= GM[0] # Just to avoid error
+            sgapdf_kwargs['rs']= rs[0] 
+            sgapdf_kwargs['subhalopot']= subhalopot[0]
+            sgapdf_kwargs['nokicksetup']= True
+            self._sgapdfs_coordtransform[ti]=\
+                galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+        # Compute all kicks
+        self._nKickPoints= nKickPoints
+        self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
+                                              timpact,GM,rs,subhalopot)
+        return None
 
-        self._determine_nTrackIterations(kwargs.get('nTrackIterations',None))
-        self._determine_deltaAngleTrackImpact(deltaAngleTrackImpact,timpact)
-        self._determine_impact_coordtransform(self._deltaAngleTrackImpact,
-                                              nTrackChunksImpact,
-                                              timpact,impact_angle)
-        # Compute \Delta Omega ( \Delta \theta_perp) and \Delta theta,
-        # setup interpolating function
-        self._determine_deltav_kick(impactb,subhalovel,
-                                    GM,rs,subhalopot,
-                                    nKickPoints)
-        self._determine_deltaOmegaTheta_kick()
-        # Then pass everything to the normal streamdf setup
-        #self.nInterpolatedTrackChunks= 201 #more expensive now
-        #super(streampepperdf,self)._determine_stream_track(nTrackChunks)
-        #self._useInterp= useInterp
-        #if interpTrack or self._useInterp:
-        #    super(streampepperdf,self)._interpolate_stream_track()
-        #    super(streampepperdf,self)._interpolate_stream_track_aA()
-        #super(streampepperdf,self).calc_stream_lb()
+    def _determine_deltaOmegaTheta_kicks(self,impact_angle,impactb,subhalovel,
+                                         timpact,GM,rs,subhalopot):
+        """Compute the kicks in frequency-angle space for all impacts"""
+        self._nkicks= len(impactb)
+        self._sgapdfs= []
+        for kk in range(self._nkicks):
+            sgdf= copy.deepcopy(self._sgapdfs_coordtransform[timpact[kk]])
+            # compute the kick using the pre-computed coordinate transformation
+            sgdf._determine_deltav_kick(impact_angle[kk],impactb[kk],
+                                        subhalovel[kk],
+                                        GM[kk],rs[kk],subhalopot[kk],
+                                        self._nKickPoints)
+            sgdf._determine_deltaOmegaTheta_kick()
+            self._sgapdfs.append(sgdf)
         return None
 
