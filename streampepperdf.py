@@ -251,16 +251,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if tdisrupt is None: tdisrupt= self._tdisrupt
         Tlow= 1./2./self._sigMeanOffset\
             -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
-        num=\
-            integrate.quad(lambda T: (T/(1-T*T)\
-                                          *numpy.sqrt(self._sortedSigOEig[2])\
-                                          +self._meandO)\
-                               *numpy.sqrt(self._sortedSigOEig[2])\
-                               *(1+T*T)/(1-T*T)**2.\
-                               *self.pOparapar(T/(1-T*T)\
-                                                   *numpy.sqrt(self._sortedSigOEig[2])\
-                                                   +self._meandO,dangle),
-                           Tlow,1.)[0]
         denom=\
             integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
                                *(1+T*T)/(1-T*T)**2.\
@@ -268,7 +258,16 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                                    *numpy.sqrt(self._sortedSigOEig[2])\
                                                    +self._meandO,dangle),
                            Tlow,1.)[0]
-        dO1D= num/denom
+        dO1D=\
+            integrate.quad(lambda T: (T/(1-T*T)\
+                                          *numpy.sqrt(self._sortedSigOEig[2])\
+                                          +self._meandO)\
+                               *numpy.sqrt(self._sortedSigOEig[2])\
+                               *(1+T*T)/(1-T*T)**2.\
+                               *self.pOparapar(T/(1-T*T)\
+                                                   *numpy.sqrt(self._sortedSigOEig[2])\
+                                                   +self._meandO,dangle)/denom,
+                           Tlow,1.)[0]
         if oned: return dO1D
         else:
             return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
