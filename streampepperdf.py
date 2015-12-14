@@ -110,6 +110,62 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                               timpact,GM,rs,subhalopot)
         return None
 
+    def set_impacts(self,**kwargs):
+        """
+        NAME:
+
+           set_impacts
+
+        PURPOSE:
+
+           Setup a new set of impacts
+
+        INPUT:
+
+           Subhalo and impact parameters, for all impacts:
+
+              impactb= impact parameter ([nimpact])
+
+              subhalovel= velocity of the subhalo shape=(nimpact,3)
+
+              impact_angle= angle offset from progenitor at which the impact occurred (at the impact time; in rad) ([nimpact])
+
+              timpact time since impact ([nimpact])
+
+              Subhalo: specify either 1( mass and size of Plummer sphere or 2( general spherical-potential object (kick is numerically computed); all kicks need to chose the same option
+
+                 1( GM= mass of the subhalo ([nimpact])
+
+                    rs= size parameter of the subhalo ([nimpact])
+
+                 2( subhalopot= galpy potential object or list thereof (should be spherical); list of len nimpact (if the individual potentials are lists, need to give a list of lists)
+
+
+        OUTPUT:
+        
+           (none; just sets up new set of impacts)
+
+        HISTORY:
+
+           2015-12-14 - Written - Bovy (UofT)
+
+        """
+        # Parse kwargs, everything except for timpact can be arrays
+        impactb= kwargs.pop('impactb',[1.])
+        subhalovel= kwargs.pop('subhalovel',numpy.array([[0.,1.,0.]]))
+        impact_angle= kwargs.pop('impact_angle',[1.])
+        GM= kwargs.pop('GM',None)
+        rs= kwargs.pop('rs',None)
+        subhalopot= kwargs.pop('subhalopot',None)
+        if GM is None: GM= [None for b in impactb]
+        if rs is None: rs= [None for b in impactb]
+        if subhalopot is None: subhalopot= [None for b in impactb]
+        timpact= kwargs.pop('timpact',[1.])
+        # Run through previous setup to determine delta Omegas
+        self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
+                                              timpact,GM,rs,subhalopot)
+        return None
+
     def _determine_deltaOmegaTheta_kicks(self,impact_angle,impactb,subhalovel,
                                          timpact,GM,rs,subhalopot):
         """Compute the kicks in frequency-angle space for all impacts"""
@@ -125,8 +181,14 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                         self._nKickPoints)
             sgdf._determine_deltaOmegaTheta_kick()
             self._sgapdfs.append(sgdf)
-        # Store times
+        # Store impact parameters
+        self._impact_angle= impact_angle
+        self._impactb= impactb
+        self._subhalovel= subhalovel
         self._timpact= numpy.sort(timpact)
+        self._GM= GM
+        self._rs= rs
+        self._subhalopot= subhalopot
         return None
 
     def pOparapar(self,Opar,apar):
