@@ -392,3 +392,49 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
                 *self._sigMeanSign
 
+################################SAMPLE THE DF##################################
+    def _sample_aAt(self,n):
+        """Sampling frequencies, angles, and times part of sampling, for stream with gaps"""
+        # Use streamdf's _sample_aAt to generate unperturbed frequencies,
+        # angles
+        Om,angle,dt= super(streampepperdf,self)._sample_aAt(n)
+        # Now rewind angles to the first impact, then apply all kicks, 
+        # and run forward again
+        dangle_at_impact= angle-numpy.tile(self._progenitor_angle.T,(n,1)).T\
+            -(Om-numpy.tile(self._progenitor_Omega.T,(n,1)).T)\
+            *self._timpact[-1]
+        dangle_par_at_impact=\
+            numpy.dot(dangle_at_impact.T,
+                      self._dsigomeanProgDirection)\
+                      *self._sgapdfs[-1]._gap_sigMeanSign
+        dOpar= numpy.dot((Om-numpy.tile(self._progenitor_Omega.T,(n,1)).T).T,
+                         self._dsigomeanProgDirection)\
+                         *self._sgapdfs[-1]._gap_sigMeanSign
+        for kk,timpact in enumerate(self._timpact[::-1]):
+            # Calculate and apply kicks (points not yet released have 
+            # zero kick)
+            dOr= self._sgapdfs[-kk-1]._kick_interpdOr(dangle_par_at_impact)
+            dOp= self._sgapdfs[-kk-1]._kick_interpdOp(dangle_par_at_impact)
+            dOz= self._sgapdfs[-kk-1]._kick_interpdOz(dangle_par_at_impact)
+            Om[0,:]+= dOr
+            Om[1,:]+= dOp
+            Om[2,:]+= dOz
+            if kk < len(self._timpact)-1:
+                run_to_timpact= self._timpact[::-1][kk+1]
+            else:
+                run_to_timpact= 0.
+            angle[0,:]+=\
+                self._sgapdfs[-kk-1]._kick_interpdar(dangle_par_at_impact)\
+                +dOr*timpact
+            angle[1,:]+=\
+                self._sgapdfs[-kk-1]._kick_interpdap(dangle_par_at_impact)\
+                +dOp*timpact
+            angle[2,:]+=\
+                self._sgapdfs[-kk-1]._kick_interpdaz(dangle_par_at_impact)\
+                +dOz*timpact
+            # Update parallel evolution
+            dOpar+=\
+                self._sgapdfs[-kk-1]._kick_interpdOpar(dangle_par_at_impact)
+            dangle_par_at_impact+= dOpar*(timpact-run_to_timpact)
+        return (Om,angle,dt)
+
