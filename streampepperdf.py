@@ -88,12 +88,12 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         super(streampepperdf,self).__init__(*args,**kwargs)
         # Setup streamgapdf objects to setup the machinery to go between 
         # (x,v) and (Omega,theta) near the impacts
-        uniq_timpact= list(set(timpact))
+        self._uniq_timpact= list(set(timpact))
         self._sgapdfs_coordtransform= {}
-        for ti in uniq_timpact:
+        for ti in self._uniq_timpact:
             sgapdf_kwargs= copy.deepcopy(kwargs)
             sgapdf_kwargs['timpact']= ti
-            sgapdf_kwargs['impact_angle']= 1. # only affects a check
+            sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
             if not self._leading: sgapdf_kwargs['impact_angle']= -1.
             sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
             sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
@@ -104,10 +104,67 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['nokicksetup']= True
             self._sgapdfs_coordtransform[ti]=\
                 galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+        self._gap_leading=\
+            self._sgapdfs_coordtransform[timpact[0]]._gap_leading
         # Compute all kicks
         self._nKickPoints= nKickPoints
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
+        return None
+
+    def simulate(self,rate=1.):
+        """
+        NAME:
+        
+           simulate
+
+        PURPOSE:
+
+           simulate a set of impacts
+
+        INPUT:
+
+           rate= (1.) 
+
+        OUTPUT:
+
+           (none; just sets up the instance for the new set of impacts)
+        
+        HISTORY
+
+           2015-12-14 - Written - Bovy (UofT)
+
+        """
+        # Sample impact parameters
+        # angle, just use Weibull for now
+        angles=\
+            numpy.cumsum(numpy.random.weibull(2.,
+                                              size=int(numpy.ceil(rate))))\
+                                              /rate
+        angles= angles[angles < 1.]*self._deltaAngleTrack
+        # Times and rewind impact angles
+        timpacts= [self._uniq_timpact[0] for a in angles]
+        impact_angles= numpy.array(\
+            [a-t*super(streampepperdf,self).meanOmega(a,oned=True)
+             for a,t in zip(angles,timpacts)])
+        # BOVY: FOR NOW=>
+        impact_angles[impact_angles <= 0.]= 0.1
+        if not self._gap_leading: impact_angles*= -1.
+        # Keep GM and rs the same for now
+        GMs= numpy.array([self._GM[0] for a in impact_angles])
+        rss= numpy.array([self._rs[0] for a in impact_angles])
+        # impact b
+        impactbs= numpy.random.uniform(size=len(impact_angles))**0.5\
+            *2.*rss
+        # velocity
+        subhalovels= numpy.random.normal(scale=150./self._Vnorm,
+                                         size=(len(impact_angles),3))
+        # Setup
+        self.set_impacts(impact_angle=impact_angles,
+                         impactb=impactbs,
+                         subhalovel= subhalovels,
+                         timpact=timpacts,
+                         GM=GMs,rs=rss)
         return None
 
     def set_impacts(self,**kwargs):
