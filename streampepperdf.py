@@ -310,29 +310,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 tdisrupt=self._tdisrupt-current_timpact)
         return out
 
-    def density_par(self,dangle,tdisrupt=None):
-        """
-        NAME:
-
-           density_par
-
-        PURPOSE:
-
-           calculate the density as a function of parallel angle, assuming a uniform time distribution up to a maximum time
-
-        INPUT:
-
-           dangle - angle offset
-
-        OUTPUT:
-
-           density(angle)
-
-        HISTORY:
-
-           2015-11-17 - Written - Bovy (UofT)
-
-        """
+    def _density_par(self,dangle,tdisrupt=None):
+        """The raw density as a function of parallel angle"""
         if tdisrupt is None: tdisrupt= self._tdisrupt
         Tlow= 1./2./self._sigMeanOffset\
             -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
