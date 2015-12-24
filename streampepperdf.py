@@ -315,12 +315,16 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if tdisrupt is None: tdisrupt= self._tdisrupt
         Tlow= 1./2./self._sigMeanOffset\
             -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
+        smooth_dens= super(streampepperdf,self)._density_par(dangle)
         return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
                                   *(1+T*T)/(1-T*T)**2.\
                                   *self.pOparapar(T/(1-T*T)\
                                                       *numpy.sqrt(self._sortedSigOEig[2])\
-                                                      +self._meandO,dangle),
-                              Tlow,1.)[0]
+                                                      +self._meandO,dangle)/\
+                                  smooth_dens,
+                              Tlow,1.,
+                              limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
+                              *smooth_dens
 
     def meanOmega(self,dangle,oned=False,tdisrupt=None,norm=True):
         """
@@ -351,15 +355,9 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         Tlow= 1./2./self._sigMeanOffset\
             -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
         if not norm:
-            denom= super(streampepperdf,self).density_par(dangle)
+            denom= super(streampepperdf,self)._density_par(dangle)
         else:
-            denom=\
-                integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
-                                   *(1+T*T)/(1-T*T)**2.\
-                                   *self.pOparapar(T/(1-T*T)\
-                                                       *numpy.sqrt(self._sortedSigOEig[2])\
-                                                       +self._meandO,dangle),
-                               Tlow,1.,limit=100)[0]
+            denom= self._density_par(dangle)
         dO1D=\
             integrate.quad(lambda T: (T/(1-T*T)\
                                           *numpy.sqrt(self._sortedSigOEig[2])\
@@ -368,8 +366,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                *(1+T*T)/(1-T*T)**2.\
                                *self.pOparapar(T/(1-T*T)\
                                                    *numpy.sqrt(self._sortedSigOEig[2])\
-                                                   +self._meandO,dangle)/denom,
-                           Tlow,1.,limit=100)[0]
+                                                   +self._meandO,dangle)\
+                               /self._meandO/denom,
+                           Tlow,1.,
+                           limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
+                           *self._meandO
         if not norm: dO1D*= denom
         if oned: return dO1D
         else:
