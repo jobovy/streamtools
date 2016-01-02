@@ -324,8 +324,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if approx:
             return self._density_par_approx(dangle,tdisrupt)
         else:
-            Tlow= 1./2./self._sigMeanOffset\
-                -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
             smooth_dens= super(streampepperdf,self)._density_par(dangle)
             return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
                                       *(1+T*T)/(1-T*T)**2.\
@@ -333,7 +331,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                                           *numpy.sqrt(self._sortedSigOEig[2])\
                                                           +self._meandO,dangle)/\
                                       smooth_dens,
-                                  Tlow,1.,
+                                  -1.,1.,
                                   limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
                                   *smooth_dens
 
@@ -342,7 +340,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         spline representations"""
         ul,da,ti,c0,c1= self._approx_pdf(dangle)
         # Find the lower limit of the integration interval
-        lowbindx,lowx= self.minOpar(dangle,True,ul,da,ti,c0,c1)
+        lowbindx,lowx,edge= self.minOpar(dangle,True,ul,da,ti,c0,c1)
         ul[lowbindx-1]= ul[lowbindx]-lowx
         # Integrate each interval
         out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
@@ -356,6 +354,12 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Add integration to infinity
         out+= 0.5*(1.+special.erf((self._meandO-ul[-1])\
                                       /numpy.sqrt(2.*self._sortedSigOEig[2])))
+        # Add integration to edge if edge
+        if edge:
+            out= 0.5*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
+                                      *(ul[0]-self._meandO))\
+                          -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
+                                       *(dangle/tdisrupt-self._meandO)))
         return out
 
     def _approx_pdf(self,dangle):
@@ -487,8 +491,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         nlowx[lowx < 0.]= numpy.inf
         lowbindx= numpy.argmin(nlowx)
         lowbindx= numpy.arange(len(ul))[lowbindx]
+        edge= False
+        if lowbindx == 0: # edge case
+            lowbindx= 1
+            lowx[lowbindx]= ul[1]-ul[0]
+            edge= True
         if _return_raw:
-            return (lowbindx,lowx[lowbindx])
+            return (lowbindx,lowx[lowbindx],edge)
+        elif edge:
+            return dangle/self._tdisrupt
         else:
             return ul[lowbindx]-lowx[lowbindx]
 
@@ -518,8 +529,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
         """
         if tdisrupt is None: tdisrupt= self._tdisrupt
-        Tlow= 1./2./self._sigMeanOffset\
-            -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
         if not norm:
             denom= super(streampepperdf,self)._density_par(dangle)
         else:
@@ -534,7 +543,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                                    *numpy.sqrt(self._sortedSigOEig[2])\
                                                    +self._meandO,dangle)\
                                /self._meandO/denom,
-                           Tlow,1.,
+                           -1.,1.,
                            limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
                            *self._meandO
         if not norm: dO1D*= denom
