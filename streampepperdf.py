@@ -360,43 +360,42 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
     def _approx_pdf(self,dangle):
         """Internal function to return all of the parameters of the (approximat) p(Omega,angle)"""
         # First construct the breakpoints for the last impact for this dangle,
-        # and start on the lower and upper limits
+        # and start on the upper limits
         Oparb= (dangle-self._sgapdfs[0]._kick_interpdOpar_poly.x)\
             /self._timpact[0]
         ul= Oparb[::-1]
-        # Arrays for propagating the lower and upper limits through the impacts
-        da= numpy.ones_like(ul)*dangle
-        ti= numpy.ones_like(ul)*self._timpact[0]
         # Array of previous pw-poly coeffs and breaks
         pwpolyBreak= self._sgapdfs[0]._kick_interpdOpar_poly.x[::-1]
         pwpolyCoeff0= numpy.append(\
             self._sgapdfs[0]._kick_interpdOpar_poly.c[-1],0.)[::-1]
         pwpolyCoeff1= numpy.append(\
             self._sgapdfs[0]._kick_interpdOpar_poly.c[-2],0.)[::-1]
+        # Arrays for propagating the lower and upper limits through the impacts
+        da= numpy.ones_like(ul)*dangle
+        ti= numpy.ones_like(ul)*self._timpact[0]
+        do= -pwpolyCoeff0-pwpolyCoeff1*(da-pwpolyBreak)
         # Arrays for final coefficients
         c0= pwpolyCoeff0
         c1= 1.+pwpolyCoeff1*self._timpact[0]
         cx= numpy.zeros(len(ul))
         for kk in range(1,len(self._timpact)):
-            ul, da, ti, c0, c1, cx, pwpolyBreak, pwpolyCoeff0, pwpolyCoeff1=\
-                self._update_approx_prevImpact(kk,ul,da,ti,c0,c1,cx,
+            ul, da, ti, do, c0, c1, cx, \
+                pwpolyBreak, pwpolyCoeff0, pwpolyCoeff1=\
+                self._update_approx_prevImpact(kk,ul,da,ti,do,c0,c1,cx,
                                                pwpolyBreak,
                                                pwpolyCoeff0,pwpolyCoeff1)
         # Form final c0 by adding cx times ul
         c0-= cx*ul
         return (ul,da,ti,c0,c1)
 
-    def _update_approx_prevImpact(self,kk,ul,da,ti,c0,c1,cx,
+    def _update_approx_prevImpact(self,kk,ul,da,ti,do,c0,c1,cx,
                                   pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1):
         """Update the lower and upper limits, and the coefficient arrays when
         going through the previous impact"""
         # Compute matrix of lower and upper limits for each current breakpoint
         # and each previous breakpoint
-        da_u= da-(self._timpact[kk]-self._timpact[kk-1])\
-            *(pwpolyCoeff0+pwpolyCoeff1*(da-pwpolyBreak))
-        ti_u= self._timpact[kk]-self._timpact[kk-1]+ti\
-            -(self._timpact[kk]-self._timpact[kk-1])\
-            *pwpolyCoeff1*ti
+        da_u= da-(self._timpact[kk]-self._timpact[kk-1])*do
+        ti_u= ti+(self._timpact[kk]-self._timpact[kk-1])*c1
         xj= numpy.tile(self._sgapdfs[kk]._kick_interpdOpar_poly.x[::-1],
                        (len(ul),1)).T
         ult= (da_u-xj)/ti_u
@@ -420,9 +419,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Keep other arrays in sync with the limits
         nNewCoeff= len(self._sgapdfs[kk]._kick_interpdOpar_poly.x)
         da_u= numpy.append(numpy.tile(da_u,(nNewCoeff,1))[limitIndx].flatten(),
-                           da_u)[limitsIndx]
+                            da_u)[limitsIndx]
         ti_u= numpy.append(numpy.tile(ti_u,(nNewCoeff,1))[limitIndx].flatten(),
                            ti_u)[limitsIndx]
+        do_u= numpy.append(numpy.tile(do,(nNewCoeff,1))[limitIndx].flatten(),
+                           do)[limitsIndx]
         c0_u= numpy.append(numpy.tile(c0_u,(nNewCoeff,1))[limitIndx].flatten(),
                            c0_u)[limitsIndx]
         c1_u= numpy.append(numpy.tile(c1,(nNewCoeff,1))[limitIndx].flatten(),
@@ -434,27 +435,29 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         insertIndx= numpy.sort(\
             limitusIndx[numpy.arange(numpy.sum(limitIndx),len(ul_u))])[:-1]
         pwpolyBreak_u= numpy.append(\
-            xj[limitIndx].flatten(),numpy.zeros(len(ul))\
-                +self._sgapdfs[kk]._kick_interpdOpar_poly.x[0])[limitsIndx]
-        pwpolyBreak_u[insertIndx]= pwpolyBreak_u[insertIndx+1]
+            xj[limitIndx].flatten(),numpy.zeros(len(ul)))[limitsIndx]
         pwpolyCoeff0_u= numpy.append(numpy.tile(\
                 numpy.append(\
                     self._sgapdfs[kk]._kick_interpdOpar_poly.c[-1],0.)[::-1],
                 (len(ul),1)).T[limitIndx].flatten(),\
                                        numpy.zeros(len(ul)))[limitsIndx]
-        pwpolyCoeff0_u[insertIndx]= pwpolyCoeff0_u[insertIndx+1]
         pwpolyCoeff1_u= numpy.append(numpy.tile(\
                 numpy.append(\
                     self._sgapdfs[kk]._kick_interpdOpar_poly.c[-2],0.)[::-1],
                 (len(ul),1)).T[limitIndx].flatten(),\
                                        numpy.zeros(len(ul)))[limitsIndx]
-        pwpolyCoeff1_u[insertIndx]= pwpolyCoeff1_u[insertIndx+1]
+        # Need to do this sequentially, if multiple inserted in one range
+        for ii in insertIndx[::-1]:
+            pwpolyBreak_u[ii]= pwpolyBreak_u[ii+1]
+            pwpolyCoeff0_u[ii]= pwpolyCoeff0_u[ii+1]
+            pwpolyCoeff1_u[ii]= pwpolyCoeff1_u[ii+1]
+        do_u-= pwpolyCoeff0_u+pwpolyCoeff1_u*(da_u-pwpolyBreak_u)
         # Now update the coefficient arrays
         c0_u+= pwpolyCoeff0_u       
         c1_u+= pwpolyCoeff1_u*ti_u
         # Remove duplicates in limits
         dupIndx= numpy.roll(ul_u,-1)-ul_u != 0
-        return (ul_u[dupIndx],da_u[dupIndx],ti_u[dupIndx],
+        return (ul_u[dupIndx],da_u[dupIndx],ti_u[dupIndx],do_u[dupIndx],
                 c0_u[dupIndx],c1_u[dupIndx],cx_u[dupIndx],
                 pwpolyBreak_u[dupIndx],pwpolyCoeff0_u[dupIndx],
                 pwpolyCoeff1_u[dupIndx])
