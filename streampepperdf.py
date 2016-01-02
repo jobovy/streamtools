@@ -339,6 +339,26 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
     def _density_par_approx(self,dangle,tdisrupt,_return_array=False):
         """Compute the density as a function of parallel angle using the 
         spline representations"""
+        ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        # Find the lower limit of the integration interval
+        lowbindx,lowx= self.minOpar(dangle,True,ul,da,ti,c0,c1)
+        ul[lowbindx-1]= ul[lowbindx]-lowx
+        # Integrate each interval
+        out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
+                                      *(ul-c0-self._meandO))\
+                          -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
+                                       *(ul-c0-self._meandO
+                                         -c1*(ul-numpy.roll(ul,1))))))
+        if _return_array:
+            return out[1:]
+        out= numpy.sum(out[lowbindx:])
+        # Add integration to infinity
+        out+= 0.5*(1.+special.erf((self._meandO-ul[-1])\
+                                      /numpy.sqrt(2.*self._sortedSigOEig[2])))
+        return out
+
+    def _approx_pdf(self,dangle):
+        """Internal function to return all of the parameters of the (approximat) p(Omega,angle)"""
         # First construct the breakpoints for the last impact for this dangle,
         # and start on the lower and upper limits
         Oparb= (dangle-self._sgapdfs[0]._kick_interpdOpar_poly.x)\
@@ -364,27 +384,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                                pwpolyCoeff0,pwpolyCoeff1)
         # Form final c0 by adding cx times ul
         c0-= cx*ul
-        # Find the lower limit of the integration interval
-        lowx= ((ul-c0)*(tdisrupt-self._timpact[-1])+ul*ti-da)\
-            /((tdisrupt-self._timpact[-1])*c1+ti)
-        lowx[lowx < 0.]= numpy.inf
-        lowbindx= numpy.argmin(lowx)
-        lowbindx= numpy.arange(len(ul))[lowbindx]
-        ul[lowbindx-1]= ul[lowbindx]-lowx[lowbindx]
-        # Integrate each interval
-        out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
-                                      *(ul-c0-self._meandO))\
-                          -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
-                                       *(ul-c0-self._meandO
-                                         -c1*(ul-numpy.roll(ul,1))))))
-        if _return_array:
-            return out[1:]
-        out= numpy.sum(out[lowbindx:])
-        # Add integration to infinity
-        out+= 0.5*(1.+special.erf((self._meandO-ul[-1])\
-                                      /numpy.sqrt(2.*self._sortedSigOEig[2])))
-        return out
-    
+        return (ul,da,ti,c0,c1)
+
     def _update_approx_prevImpact(self,kk,ul,da,ti,c0,c1,cx,
                                   pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1):
         """Update the lower and upper limits, and the coefficient arrays when
@@ -457,6 +458,34 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 c0_u[dupIndx],c1_u[dupIndx],cx_u[dupIndx],
                 pwpolyBreak_u[dupIndx],pwpolyCoeff0_u[dupIndx],
                 pwpolyCoeff1_u[dupIndx])
+
+    def minOpar(self,dangle,_return_raw=False,*args):
+        """
+        NAME:
+           minOpar
+        PURPOSE:
+           return the approximate minimum parallel frequency at a given angle
+        INPUT:
+           dangle - parallel angle
+        OUTPUT:
+           minimum frequency that gets to this parallel angle
+        HISTORY:
+           2016-01-01 - Written - Bovy (UofT)
+        """
+        if len(args) == 0:
+            ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        else:
+            ul,da,ti,c0,c1= args
+        # Find the lower limit of the integration interval
+        lowx= ((ul-c0)*(self._tdisrupt-self._timpact[-1])+ul*ti-da)\
+            /((self._tdisrupt-self._timpact[-1])*c1+ti)
+        lowx[lowx < 0.]= numpy.inf
+        lowbindx= numpy.argmin(lowx)
+        lowbindx= numpy.arange(len(ul))[lowbindx]
+        if _return_raw:
+            return (lowbindx,lowx[lowbindx])
+        else:
+            return ul[lowbindx]-lowx[lowbindx]
 
     def meanOmega(self,dangle,oned=False,tdisrupt=None,norm=True):
         """
