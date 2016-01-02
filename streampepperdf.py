@@ -292,7 +292,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             # Compute ts and where they were at current impact for all
             ts= current_apar/current_Opar
             # Evaluate those that have ts < (timpact-current_timpact)
-            afterIndx= remaining_indx*(ts < (timpact-current_timpact))
+            afterIndx= remaining_indx*(ts < (timpact-current_timpact))\
+                *(ts >= 0.)
             out[afterIndx]=\
                 super(streampepperdf,self).pOparapar(current_Opar[afterIndx],
                                                      current_apar[afterIndx],
@@ -482,8 +483,9 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Find the lower limit of the integration interval
         lowx= ((ul-c0)*(self._tdisrupt-self._timpact[-1])+ul*ti-da)\
             /((self._tdisrupt-self._timpact[-1])*c1+ti)
-        lowx[lowx < 0.]= numpy.inf
-        lowbindx= numpy.argmin(lowx)
+        nlowx= lowx/(ul-numpy.roll(ul,1))
+        nlowx[lowx < 0.]= numpy.inf
+        lowbindx= numpy.argmin(nlowx)
         lowbindx= numpy.arange(len(ul))[lowbindx]
         if _return_raw:
             return (lowbindx,lowx[lowbindx])
