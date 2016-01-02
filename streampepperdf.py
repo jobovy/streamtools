@@ -1,7 +1,7 @@
 # The DF of a tidal stream peppered with impacts
 import copy
 import numpy
-from scipy import integrate
+from scipy import integrate, special, stats
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
 class streampepperdf(galpy.df_src.streamdf.streamdf):
@@ -44,6 +44,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            nKickPoints= (10xnTrackChunksImpact) number of points along the stream to compute the kicks at (kicks are then interpolated)
 
+           spline_order= (3) order of the spline to interpolate the kicks with
+
         OUTPUT:
 
            object
@@ -67,6 +69,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         deltaAngleTrackImpact= kwargs.pop('deltaAngleTrackImpact',None)
         nTrackChunksImpact= kwargs.pop('nTrackChunksImpact',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
+        spline_order= kwargs.pop('spline_order',3)
         # For setup later
         nTrackChunks= kwargs.pop('nTrackChunks',None)
         interpTrack= kwargs.pop('interpTrack',
@@ -98,6 +101,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
             sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
             sgapdf_kwargs['nKickPoints']= nKickPoints
+            sgapdf_kwargs['spline_order']= spline_order
             sgapdf_kwargs['GM']= GM[0] # Just to avoid error
             sgapdf_kwargs['rs']= rs[0] 
             sgapdf_kwargs['subhalopot']= subhalopot[0]
@@ -108,6 +112,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             self._sgapdfs_coordtransform[timpact[0]]._gap_leading
         # Compute all kicks
         self._nKickPoints= nKickPoints
+        self._spline_order= spline_order
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
         return None
@@ -235,8 +240,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgdf._determine_deltav_kick(impact_angle[kk],impactb[kk],
                                         subhalovel[kk],
                                         GM[kk],rs[kk],subhalopot[kk],
-                                        self._nKickPoints)
-            sgdf._determine_deltaOmegaTheta_kick()
+                                        self._nKickPoints,self._spline_order)
+            sgdf._determine_deltaOmegaTheta_kick(self._spline_order)
             self._sgapdfs.append(sgdf)
         # Store impact parameters
         sortIndx= numpy.argsort(numpy.array(timpact))
@@ -310,21 +315,148 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 tdisrupt=self._tdisrupt-current_timpact)
         return out
 
-    def _density_par(self,dangle,tdisrupt=None):
-        """The raw density as a function of parallel angle"""
+    def _density_par(self,dangle,tdisrupt=None,approx=True):
+        """The raw density as a function of parallel angle
+        approx= use faster method that directly integrates the spline
+        representations"""
         if tdisrupt is None: tdisrupt= self._tdisrupt
-        Tlow= 1./2./self._sigMeanOffset\
-            -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
-        smooth_dens= super(streampepperdf,self)._density_par(dangle)
-        return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
-                                  *(1+T*T)/(1-T*T)**2.\
-                                  *self.pOparapar(T/(1-T*T)\
-                                                      *numpy.sqrt(self._sortedSigOEig[2])\
-                                                      +self._meandO,dangle)/\
-                                  smooth_dens,
-                              Tlow,1.,
-                              limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
-                              *smooth_dens
+        if approx:
+            return self._density_par_approx(dangle,tdisrupt)
+        else:
+            Tlow= 1./2./self._sigMeanOffset\
+                -numpy.sqrt(1.-(1./2./self._sigMeanOffset)**2.)
+            smooth_dens= super(streampepperdf,self)._density_par(dangle)
+            return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
+                                      *(1+T*T)/(1-T*T)**2.\
+                                      *self.pOparapar(T/(1-T*T)\
+                                                          *numpy.sqrt(self._sortedSigOEig[2])\
+                                                          +self._meandO,dangle)/\
+                                      smooth_dens,
+                                  Tlow,1.,
+                                  limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
+                                  *smooth_dens
+
+    def _density_par_approx(self,dangle,tdisrupt,_return_array=False):
+        """Compute the density as a function of parallel angle using the 
+        spline representations"""
+        # First construct the breakpoints for the last impact for this dangle,
+        # and start on the lower and upper limits
+        Oparb= (dangle-self._sgapdfs[0]._kick_interpdOpar_poly.x)\
+            /self._timpact[0]
+        ul= Oparb[::-1]
+        # Arrays for propagating the lower and upper limits through the impacts
+        da= numpy.ones_like(ul)*dangle
+        ti= numpy.ones_like(ul)*self._timpact[0]
+        # Array of previous pw-poly coeffs and breaks
+        pwpolyBreak= self._sgapdfs[0]._kick_interpdOpar_poly.x[::-1]
+        pwpolyCoeff0= numpy.append(\
+            self._sgapdfs[0]._kick_interpdOpar_poly.c[-1],0.)[::-1]
+        pwpolyCoeff1= numpy.append(\
+            self._sgapdfs[0]._kick_interpdOpar_poly.c[-2],0.)[::-1]
+        # Arrays for final coefficients
+        c0= pwpolyCoeff0
+        c1= 1.+pwpolyCoeff1*self._timpact[0]
+        cx= numpy.zeros(len(ul))
+        for kk in range(1,len(self._timpact)):
+            ul, da, ti, c0, c1, cx, pwpolyBreak, pwpolyCoeff0, pwpolyCoeff1=\
+                self._update_approx_prevImpact(kk,ul,da,ti,c0,c1,cx,
+                                               pwpolyBreak,
+                                               pwpolyCoeff0,pwpolyCoeff1)
+        # Form final c0 by adding cx times ul
+        c0-= cx*ul
+        # Find the lower limit of the integration interval
+        lowx= ((ul-c0)*(tdisrupt-self._timpact[-1])+ul*ti-da)\
+            /((tdisrupt-self._timpact[-1])*c1+ti)
+        lowx[lowx < 0.]= numpy.inf
+        lowbindx= numpy.argmin(lowx)
+        lowbindx= numpy.arange(len(ul))[lowbindx]
+        ul[lowbindx-1]= ul[lowbindx]-lowx[lowbindx]
+        # Integrate each interval
+        out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
+                                      *(ul-c0-self._meandO))\
+                          -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
+                                       *(ul-c0-self._meandO
+                                         -c1*(ul-numpy.roll(ul,1))))))
+        if _return_array:
+            return out[1:]
+        out= numpy.sum(out[lowbindx:])
+        # Add integration to infinity
+        out+= 0.5*(1.+special.erf((self._meandO-ul[-1])\
+                                      /numpy.sqrt(2.*self._sortedSigOEig[2])))
+        return out
+    
+    def _update_approx_prevImpact(self,kk,ul,da,ti,c0,c1,cx,
+                                  pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1):
+        """Update the lower and upper limits, and the coefficient arrays when
+        going through the previous impact"""
+        # Compute matrix of lower and upper limits for each current breakpoint
+        # and each previous breakpoint
+        da_u= da-(self._timpact[kk]-self._timpact[kk-1])\
+            *(pwpolyCoeff0+pwpolyCoeff1*(da-pwpolyBreak))
+        ti_u= self._timpact[kk]-self._timpact[kk-1]+ti\
+            -(self._timpact[kk]-self._timpact[kk-1])\
+            *pwpolyCoeff1*ti
+        xj= numpy.tile(self._sgapdfs[kk]._kick_interpdOpar_poly.x[::-1],
+                       (len(ul),1)).T
+        ult= (da_u-xj)/ti_u
+        # Determine which of these fall within the previous set of limits,
+        # allowing duplicates is easiest
+        limitIndx= (ult >= numpy.roll(ul,1))
+        limitIndx[:,0]= True
+        limitIndx*= (ult <= ul)
+        # Only keep those, flatten, add the previous set, and sort; this is the
+        # new set of lower and upper limits (barring duplicates, see below)
+        ul_u= numpy.append(ult[limitIndx].flatten(),ul)
+        # keep duplicates 2nd
+        limitsIndx= numpy.argsort(\
+            stats.rankdata(ul_u,method='ordinal').astype('int')-1) 
+        limitusIndx= numpy.argsort(limitsIndx) # to un-sort later
+        ul_u= ul_u[limitsIndx]
+        # Start updating the coefficient arrays
+        tixpwpoly= ti*pwpolyCoeff1
+        c0_u= c0+tixpwpoly*ul
+        cx_u= cx+tixpwpoly
+        # Keep other arrays in sync with the limits
+        nNewCoeff= len(self._sgapdfs[kk]._kick_interpdOpar_poly.x)
+        da_u= numpy.append(numpy.tile(da_u,(nNewCoeff,1))[limitIndx].flatten(),
+                           da_u)[limitsIndx]
+        ti_u= numpy.append(numpy.tile(ti_u,(nNewCoeff,1))[limitIndx].flatten(),
+                           ti_u)[limitsIndx]
+        c0_u= numpy.append(numpy.tile(c0_u,(nNewCoeff,1))[limitIndx].flatten(),
+                           c0_u)[limitsIndx]
+        c1_u= numpy.append(numpy.tile(c1,(nNewCoeff,1))[limitIndx].flatten(),
+                           c1)[limitsIndx]
+        cx_u= numpy.append(numpy.tile(cx_u,(nNewCoeff,1))[limitIndx].flatten(),
+                           cx_u)[limitsIndx]
+        # Also update the previous coefficients, figuring out where old limits
+        # were inserted
+        insertIndx= numpy.sort(\
+            limitusIndx[numpy.arange(numpy.sum(limitIndx),len(ul_u))])[:-1]
+        pwpolyBreak_u= numpy.append(\
+            xj[limitIndx].flatten(),numpy.zeros(len(ul))\
+                +self._sgapdfs[kk]._kick_interpdOpar_poly.x[0])[limitsIndx]
+        pwpolyBreak_u[insertIndx]= pwpolyBreak_u[insertIndx+1]
+        pwpolyCoeff0_u= numpy.append(numpy.tile(\
+                numpy.append(\
+                    self._sgapdfs[kk]._kick_interpdOpar_poly.c[-1],0.)[::-1],
+                (len(ul),1)).T[limitIndx].flatten(),\
+                                       numpy.zeros(len(ul)))[limitsIndx]
+        pwpolyCoeff0_u[insertIndx]= pwpolyCoeff0_u[insertIndx+1]
+        pwpolyCoeff1_u= numpy.append(numpy.tile(\
+                numpy.append(\
+                    self._sgapdfs[kk]._kick_interpdOpar_poly.c[-2],0.)[::-1],
+                (len(ul),1)).T[limitIndx].flatten(),\
+                                       numpy.zeros(len(ul)))[limitsIndx]
+        pwpolyCoeff1_u[insertIndx]= pwpolyCoeff1_u[insertIndx+1]
+        # Now update the coefficient arrays
+        c0_u+= pwpolyCoeff0_u       
+        c1_u+= pwpolyCoeff1_u*ti_u
+        # Remove duplicates in limits
+        dupIndx= numpy.roll(ul_u,-1)-ul_u != 0
+        return (ul_u[dupIndx],da_u[dupIndx],ti_u[dupIndx],
+                c0_u[dupIndx],c1_u[dupIndx],cx_u[dupIndx],
+                pwpolyBreak_u[dupIndx],pwpolyCoeff0_u[dupIndx],
+                pwpolyCoeff1_u[dupIndx])
 
     def meanOmega(self,dangle,oned=False,tdisrupt=None,norm=True):
         """
