@@ -397,8 +397,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                   pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1):
         """Update the lower and upper limits, and the coefficient arrays when
         going through the previous impact"""
-        # Compute matrix of lower and upper limits for each current breakpoint
-        # and each previous breakpoint
+        # Compute matrix of upper limits for each current breakpoint and each 
+        # previous breakpoint
         da_u= da-(self._timpact[kk]-self._timpact[kk-1])*do
         ti_u= ti+(self._timpact[kk]-self._timpact[kk-1])*c1
         xj= numpy.tile(self._sgapdfs[kk]._kick_interpdOpar_poly.x[::-1],
@@ -410,9 +410,10 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         limitIndx[:,0]= True
         limitIndx*= (ult <= ul)
         # Only keep those, flatten, add the previous set, and sort; this is the
-        # new set of lower and upper limits (barring duplicates, see below)
+        # new set of upper limits (barring duplicates, see below)
         ul_u= numpy.append(ult[limitIndx].flatten(),ul)
-        # keep duplicates 2nd
+        # make sure to keep duplicates 2nd (important later when assigning 
+        # coefficients to the old limits)
         limitsIndx= numpy.argsort(\
             stats.rankdata(ul_u,method='ordinal').astype('int')-1) 
         limitusIndx= numpy.argsort(limitsIndx) # to un-sort later
