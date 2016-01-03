@@ -335,10 +335,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                   limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
                                   *smooth_dens
 
-    def _density_par_approx(self,dangle,tdisrupt,_return_array=False):
+    def _density_par_approx(self,dangle,tdisrupt,_return_array=False,
+                            *args):
         """Compute the density as a function of parallel angle using the 
         spline representations"""
-        ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        if len(args) == 0:
+            ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        else:
+            ul,da,ti,c0,c1= args
+            ul= copy.copy(ul)
         # Find the lower limit of the integration interval
         lowbindx,lowx,edge= self.minOpar(dangle,False,True,ul,da,ti,c0,c1)
         ul[lowbindx-1]= ul[lowbindx]-lowx
@@ -349,17 +354,17 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                        *(ul-c0-self._meandO
                                          -c1*(ul-numpy.roll(ul,1))))))
         if _return_array:
-            return out[1:]
+            return out
         out= numpy.sum(out[lowbindx:])
         # Add integration to infinity
         out+= 0.5*(1.+special.erf((self._meandO-ul[-1])\
                                       /numpy.sqrt(2.*self._sortedSigOEig[2])))
         # Add integration to edge if edge
         if edge:
-            out= 0.5*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
-                                      *(ul[0]-self._meandO))\
-                          -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
-                                       *(dangle/tdisrupt-self._meandO)))
+            out+= 0.5*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
+                                       *(ul[0]-self._meandO))\
+                           -special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])
+                                        *(dangle/tdisrupt-self._meandO)))
         return out
 
     def _approx_pdf(self,dangle):
@@ -523,7 +528,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             lambda x: self.pOparapar(x*nzguess,dangle)-10.**-6.*nzval,
             guesso/nzguess,1.,xtol=1e-8,rtol=1e-8)*nzguess
 
-    def meanOmega(self,dangle,oned=False,tdisrupt=None,norm=True):
+    def meanOmega(self,dangle,oned=False,approx=True,tdisrupt=None,norm=True):
         """
         NAME:
 
@@ -539,6 +544,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            oned= (False) if True, return the 1D offset from the progenitor (along the direction of disruption)
 
+           approx= (True) if True, compute the mean Omega by direct integration of the spline representation
+
         OUTPUT:
 
            mean Omega
@@ -549,28 +556,76 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
         """
         if tdisrupt is None: tdisrupt= self._tdisrupt
-        if not norm:
-            denom= super(streampepperdf,self)._density_par(dangle)
+        if approx:
+            dO1D= self._meanOmega_approx(dangle,tdisrupt)
         else:
-            denom= self._density_par(dangle)
-        dO1D=\
-            integrate.quad(lambda T: (T/(1-T*T)\
-                                          *numpy.sqrt(self._sortedSigOEig[2])\
-                                          +self._meandO)\
-                               *numpy.sqrt(self._sortedSigOEig[2])\
-                               *(1+T*T)/(1-T*T)**2.\
-                               *self.pOparapar(T/(1-T*T)\
-                                                   *numpy.sqrt(self._sortedSigOEig[2])\
-                                                   +self._meandO,dangle)\
-                               /self._meandO/denom,
-                           -1.,1.,
-                           limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
-                           *self._meandO
-        if not norm: dO1D*= denom
+            if not norm:
+                denom= super(streampepperdf,self)._density_par(dangle)
+            else:
+                denom= self._density_par(dangle,approx=approx)
+            dO1D=\
+                integrate.quad(lambda T: (T/(1-T*T)\
+                                              *numpy.sqrt(self._sortedSigOEig[2])\
+                                              +self._meandO)\
+                                   *numpy.sqrt(self._sortedSigOEig[2])\
+                                   *(1+T*T)/(1-T*T)**2.\
+                                   *self.pOparapar(T/(1-T*T)\
+                                                       *numpy.sqrt(self._sortedSigOEig[2])\
+                                                       +self._meandO,dangle)\
+                                   /self._meandO/denom,
+                               -1.,1.,
+                               limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
+                               *self._meandO
+            if not norm: dO1D*= denom
         if oned: return dO1D
         else:
             return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
                 *self._sigMeanSign
+
+    def _meanOmega_approx(self,dangle,tdisrupt):
+        """Compute the mean frequency as a function of parallel angle using the
+        spline representations"""
+        ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        # Get the density in various forms
+        dens_arr= self._density_par_approx(dangle,tdisrupt,True,
+                                           ul,da,ti,c0,c1)
+        dens= self._density_par_approx(dangle,tdisrupt,False,
+                                       ul,da,ti,c0,c1)
+        # Compute numerator using the approximate PDF
+        # Find the lower limit of the integration interval
+        lowbindx,lowx,edge= self.minOpar(dangle,False,True,ul,da,ti,c0,c1)
+        ul[lowbindx-1]= ul[lowbindx]-lowx
+        # Integrate each interval
+        out= numpy.sum(((ul+(self._meandO+c0-ul)/c1)*dens_arr
+                        +numpy.sqrt(self._sortedSigOEig[2]/2./numpy.pi)/c1**2.\
+                            *(numpy.exp(-0.5*(ul-c0
+                                              -c1*(ul-numpy.roll(ul,1))
+                                              -self._meandO)**2.
+                                         /self._sortedSigOEig[2])
+                              -numpy.exp(-0.5*(ul-c0-self._meandO)**2.
+                                          /self._sortedSigOEig[2])))\
+                           [lowbindx:])
+        # Add integration to infinity
+        out+= 0.5*(numpy.sqrt(2./numpy.pi)*numpy.sqrt(self._sortedSigOEig[2])\
+                       *numpy.exp(-0.5*(self._meandO-ul[-1])**2.\
+                                       /self._sortedSigOEig[2])
+                   +self._meandO
+                   *(1.+special.erf((self._meandO-ul[-1])
+                                    /numpy.sqrt(2.*self._sortedSigOEig[2]))))
+        # Add integration to edge if edge
+        if edge:
+            out+= 0.5*(self._meandO*(special.erf(\
+                    1./numpy.sqrt(2.*self._sortedSigOEig[2])\
+                        *(ul[0]-self._meandO))
+                                      -special.erf(\
+                    1./numpy.sqrt(2.*self._sortedSigOEig[2])
+                    *(dangle/tdisrupt-self._meandO)))
+                       +numpy.sqrt(2.*self._sortedSigOEig[2]/numpy.pi)\
+                           *(numpy.exp(-0.5*(dangle/tdisrupt-self._meandO)**2.
+                                        /self._sortedSigOEig[2])
+                              -numpy.exp(-0.5*(ul[0]-self._meandO)**2.
+                                          /self._sortedSigOEig[2])))
+        return out/dens
 
 ################################SAMPLE THE DF##################################
     def _sample_aAt(self,n):
