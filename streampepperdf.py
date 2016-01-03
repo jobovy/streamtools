@@ -1,7 +1,7 @@
 # The DF of a tidal stream peppered with impacts
 import copy
 import numpy
-from scipy import integrate, special, stats
+from scipy import integrate, special, stats, optimize
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
 class streampepperdf(galpy.df_src.streamdf.streamdf):
@@ -340,7 +340,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         spline representations"""
         ul,da,ti,c0,c1= self._approx_pdf(dangle)
         # Find the lower limit of the integration interval
-        lowbindx,lowx,edge= self.minOpar(dangle,True,ul,da,ti,c0,c1)
+        lowbindx,lowx,edge= self.minOpar(dangle,False,True,ul,da,ti,c0,c1)
         ul[lowbindx-1]= ul[lowbindx]-lowx
         # Integrate each interval
         out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
@@ -467,7 +467,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 pwpolyBreak_u[dupIndx],pwpolyCoeff0_u[dupIndx],
                 pwpolyCoeff1_u[dupIndx])
 
-    def minOpar(self,dangle,_return_raw=False,*args):
+    def minOpar(self,dangle,bruteforce=False,_return_raw=False,*args):
         """
         NAME:
            minOpar
@@ -475,11 +475,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            return the approximate minimum parallel frequency at a given angle
         INPUT:
            dangle - parallel angle
+           bruteforce= (False) if True, just find the minimum by evaluating where p(Opar,apar) becomes non-zero
         OUTPUT:
            minimum frequency that gets to this parallel angle
         HISTORY:
            2016-01-01 - Written - Bovy (UofT)
+           2016-01-02 - Added bruteforce - Bovy (UofT)
         """
+        if bruteforce:
+            return self._minOpar_bruteforce(dangle)
         if len(args) == 0:
             ul,da,ti,c0,c1= self._approx_pdf(dangle)
         else:
@@ -502,6 +506,21 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             return dangle/self._tdisrupt
         else:
             return ul[lowbindx]-lowx[lowbindx]
+        
+    def _minOpar_bruteforce(self,dangle):
+        nzguess= numpy.array([self._meandO,self._meandO])
+        sig= numpy.array([numpy.sqrt(self._sortedSigOEig[2]),
+                          numpy.sqrt(self._sortedSigOEig[2])])
+        while numpy.all(self.pOparapar(nzguess,dangle) == 0.):
+            nzguess+= sig/3.
+        nzguess= nzguess[nzguess != 0.][0]
+        nzval= self.pOparapar(nzguess,dangle)
+        guesso= nzguess-numpy.sqrt(self._sortedSigOEig[2])
+        while self.pOparapar(guesso,dangle)-10.**-6.*nzval > 0.:
+            guesso-= numpy.sqrt(self._sortedSigOEig[2])
+        return optimize.brentq(\
+            lambda x: self.pOparapar(x*nzguess,dangle)-10.**-6.*nzval,
+            guesso/nzguess,1.,xtol=1e-8,rtol=1e-8)*nzguess
 
     def meanOmega(self,dangle,oned=False,tdisrupt=None,norm=True):
         """
