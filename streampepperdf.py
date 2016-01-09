@@ -91,7 +91,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         super(streampepperdf,self).__init__(*args,**kwargs)
         # Setup streamgapdf objects to setup the machinery to go between 
         # (x,v) and (Omega,theta) near the impacts
-        self._uniq_timpact= list(set(timpact))
+        self._uniq_timpact= sorted(list(set(timpact)))
         self._sgapdfs_coordtransform= {}
         for ti in self._uniq_timpact:
             sgapdf_kwargs= copy.deepcopy(kwargs)
@@ -252,7 +252,25 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._GM= numpy.array(GM)[sortIndx]
         self._rs= numpy.array(rs)[sortIndx]
         self._subhalopot= [subhalopot[ii] for ii in sortIndx]
+        # For _approx_pdf, also combine kicks that occur at same time
+        self._sgapdfs_uniq= []
+        for ti in self._uniq_timpact:
+            sgdfc= self._combine_deltav_kicks(ti)
+            # compute the kick using the pre-computed coordinate transformation
+            sgdfc._determine_deltaOmegaTheta_kick(self._spline_order)
+            self._sgapdfs_uniq.append(sgdfc)
         return None
+
+    def _combine_deltav_kicks(self,timpact):
+        """Internal function to combine those deltav kicks that occur at the same impact time into the output sgdfc object, so they can be used to produce a combined delta Omega (Delta apar)"""
+        # Find all the kicks that occur at timpact
+        kickIndx= numpy.where(self._timpact == timpact)[0]
+        # Copy the first one as the baseline
+        sgdfc= copy.deepcopy(self._sgapdfs[kickIndx[0]])
+        # Add deltavs from other kicks
+        for kk in kickIndx[1:]:
+            sgdfc._kick_deltav+= self._sgapdfs[kk]._kick_deltav
+        return sgdfc
 
     def pOparapar(self,Opar,apar):
         """
@@ -316,13 +334,16 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 tdisrupt=self._tdisrupt-current_timpact)
         return out
 
-    def _density_par(self,dangle,tdisrupt=None,approx=True):
+    def _density_par(self,dangle,tdisrupt=None,approx=True,
+                     force_indiv_impacts=False):
         """The raw density as a function of parallel angle
         approx= use faster method that directly integrates the spline
-        representations"""
+        representations
+        force_indiv_impacts= (False) in approx, explicitly use each individual impact at a given time rather than their combined impact at that time (should give the same)"""
         if tdisrupt is None: tdisrupt= self._tdisrupt
         if approx:
-            return self._density_par_approx(dangle,tdisrupt)
+            return self._density_par_approx(dangle,tdisrupt,
+                                            force_indiv_impacts)
         else:
             smooth_dens= super(streampepperdf,self)._density_par(dangle)
             return integrate.quad(lambda T: numpy.sqrt(self._sortedSigOEig[2])\
@@ -335,17 +356,20 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                   limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
                                   *smooth_dens
 
-    def _density_par_approx(self,dangle,tdisrupt,_return_array=False,
+    def _density_par_approx(self,dangle,tdisrupt,
+                            force_indiv_impacts,
+                            _return_array=False,
                             *args):
         """Compute the density as a function of parallel angle using the 
         spline representations"""
         if len(args) == 0:
-            ul,da,ti,c0,c1= self._approx_pdf(dangle)
+            ul,da,ti,c0,c1= self._approx_pdf(dangle,force_indiv_impacts)
         else:
             ul,da,ti,c0,c1= args
             ul= copy.copy(ul)
         # Find the lower limit of the integration interval
-        lowbindx,lowx,edge= self.minOpar(dangle,False,True,ul,da,ti,c0,c1)
+        lowbindx,lowx,edge= self.minOpar(dangle,False,force_indiv_impacts,True,
+                                         ul,da,ti,c0,c1)
         ul[lowbindx-1]= ul[lowbindx]-lowx
         # Integrate each interval
         out= (0.5/c1*(special.erf(1./numpy.sqrt(2.*self._sortedSigOEig[2])\
@@ -367,46 +391,55 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                         *(dangle/tdisrupt-self._meandO)))
         return out
 
-    def _approx_pdf(self,dangle):
+    def _approx_pdf(self,dangle,force_indiv_impacts=False):
         """Internal function to return all of the parameters of the (approximat) p(Omega,angle)"""
+        # Use individual impacts or combination?
+        if force_indiv_impacts:
+            sgapdfs= self._sgapdfs
+            timpact= self._timpact
+        else:
+            sgapdfs= self._sgapdfs_uniq
+            timpact= self._uniq_timpact
         # First construct the breakpoints for the last impact for this dangle,
         # and start on the upper limits
-        Oparb= (dangle-self._sgapdfs[0]._kick_interpdOpar_poly.x)\
-            /self._timpact[0]
+        Oparb= (dangle-sgapdfs[0]._kick_interpdOpar_poly.x)\
+            /timpact[0]
         ul= Oparb[::-1]
         # Array of previous pw-poly coeffs and breaks
-        pwpolyBreak= self._sgapdfs[0]._kick_interpdOpar_poly.x[::-1]
+        pwpolyBreak= sgapdfs[0]._kick_interpdOpar_poly.x[::-1]
         pwpolyCoeff0= numpy.append(\
-            self._sgapdfs[0]._kick_interpdOpar_poly.c[-1],0.)[::-1]
+            sgapdfs[0]._kick_interpdOpar_poly.c[-1],0.)[::-1]
         pwpolyCoeff1= numpy.append(\
-            self._sgapdfs[0]._kick_interpdOpar_poly.c[-2],0.)[::-1]
+            sgapdfs[0]._kick_interpdOpar_poly.c[-2],0.)[::-1]
         # Arrays for propagating the lower and upper limits through the impacts
         da= numpy.ones_like(ul)*dangle
-        ti= numpy.ones_like(ul)*self._timpact[0]
+        ti= numpy.ones_like(ul)*timpact[0]
         do= -pwpolyCoeff0-pwpolyCoeff1*(da-pwpolyBreak)
         # Arrays for final coefficients
         c0= pwpolyCoeff0
-        c1= 1.+pwpolyCoeff1*self._timpact[0]
+        c1= 1.+pwpolyCoeff1*timpact[0]
         cx= numpy.zeros(len(ul))
-        for kk in range(1,len(self._timpact)):
+        for kk in range(1,len(timpact)):
             ul, da, ti, do, c0, c1, cx, \
                 pwpolyBreak, pwpolyCoeff0, pwpolyCoeff1=\
                 self._update_approx_prevImpact(kk,ul,da,ti,do,c0,c1,cx,
                                                pwpolyBreak,
-                                               pwpolyCoeff0,pwpolyCoeff1)
+                                               pwpolyCoeff0,pwpolyCoeff1,
+                                               sgapdfs,timpact)
         # Form final c0 by adding cx times ul
         c0-= cx*ul
         return (ul,da,ti,c0,c1)
 
     def _update_approx_prevImpact(self,kk,ul,da,ti,do,c0,c1,cx,
-                                  pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1):
+                                  pwpolyBreak,pwpolyCoeff0,pwpolyCoeff1,
+                                  sgapdfs,timpact):
         """Update the lower and upper limits, and the coefficient arrays when
         going through the previous impact"""
         # Compute matrix of upper limits for each current breakpoint and each 
         # previous breakpoint
-        da_u= da-(self._timpact[kk]-self._timpact[kk-1])*do
-        ti_u= ti+(self._timpact[kk]-self._timpact[kk-1])*c1
-        xj= numpy.tile(self._sgapdfs[kk]._kick_interpdOpar_poly.x[::-1],
+        da_u= da-(timpact[kk]-timpact[kk-1])*do
+        ti_u= ti+(timpact[kk]-timpact[kk-1])*c1
+        xj= numpy.tile(sgapdfs[kk]._kick_interpdOpar_poly.x[::-1],
                        (len(ul),1)).T
         ult= (da_u-xj)/ti_u
         # Determine which of these fall within the previous set of limits,
@@ -428,7 +461,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         c0_u= c0+tixpwpoly*ul
         cx_u= cx+tixpwpoly
         # Keep other arrays in sync with the limits
-        nNewCoeff= len(self._sgapdfs[kk]._kick_interpdOpar_poly.x)
+        nNewCoeff= len(sgapdfs[kk]._kick_interpdOpar_poly.x)
         da_u= numpy.append(numpy.tile(da_u,(nNewCoeff,1))[limitIndx].flatten(),
                             da_u)[limitsIndx]
         ti_u= numpy.append(numpy.tile(ti_u,(nNewCoeff,1))[limitIndx].flatten(),
@@ -449,12 +482,12 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             xj[limitIndx].flatten(),numpy.zeros(len(ul)))[limitsIndx]
         pwpolyCoeff0_u= numpy.append(numpy.tile(\
                 numpy.append(\
-                    self._sgapdfs[kk]._kick_interpdOpar_poly.c[-1],0.)[::-1],
+                    sgapdfs[kk]._kick_interpdOpar_poly.c[-1],0.)[::-1],
                 (len(ul),1)).T[limitIndx].flatten(),\
                                        numpy.zeros(len(ul)))[limitsIndx]
         pwpolyCoeff1_u= numpy.append(numpy.tile(\
                 numpy.append(\
-                    self._sgapdfs[kk]._kick_interpdOpar_poly.c[-2],0.)[::-1],
+                    sgapdfs[kk]._kick_interpdOpar_poly.c[-2],0.)[::-1],
                 (len(ul),1)).T[limitIndx].flatten(),\
                                        numpy.zeros(len(ul)))[limitsIndx]
         # Need to do this sequentially, if multiple inserted in one range
@@ -473,7 +506,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 pwpolyBreak_u[dupIndx],pwpolyCoeff0_u[dupIndx],
                 pwpolyCoeff1_u[dupIndx])
 
-    def minOpar(self,dangle,bruteforce=False,_return_raw=False,*args):
+    def minOpar(self,dangle,bruteforce=False,
+                force_indiv_impacts=False,_return_raw=False,*args):
         """
         NAME:
            minOpar
@@ -482,6 +516,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         INPUT:
            dangle - parallel angle
            bruteforce= (False) if True, just find the minimum by evaluating where p(Opar,apar) becomes non-zero
+           force_indiv_impacts= (False) if True, explicitly use the streamgapdf object of each individual impact; otherwise combine impacts at the same time (should give the same result)
         OUTPUT:
            minimum frequency that gets to this parallel angle
         HISTORY:
@@ -491,7 +526,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if bruteforce:
             return self._minOpar_bruteforce(dangle)
         if len(args) == 0:
-            ul,da,ti,c0,c1= self._approx_pdf(dangle)
+            ul,da,ti,c0,c1= self._approx_pdf(dangle,force_indiv_impacts)
         else:
             ul,da,ti,c0,c1= args
         # Find the lower limit of the integration interval
@@ -528,7 +563,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             lambda x: self.pOparapar(x*nzguess,dangle)-10.**-6.*nzval,
             guesso/nzguess,1.,xtol=1e-8,rtol=1e-8)*nzguess
 
-    def meanOmega(self,dangle,oned=False,approx=True,tdisrupt=None,norm=True):
+    def meanOmega(self,dangle,oned=False,approx=True,
+                  force_indiv_impacts=False,tdisrupt=None,norm=True):
         """
         NAME:
 
@@ -546,6 +582,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            approx= (True) if True, compute the mean Omega by direct integration of the spline representation
 
+           force_indiv_impacts= (False) if True, explicitly use the streamgapdf object of each individual impact; otherwise combine impacts at the same time (should give the same result)
+
         OUTPUT:
 
            mean Omega
@@ -557,7 +595,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         """
         if tdisrupt is None: tdisrupt= self._tdisrupt
         if approx:
-            dO1D= self._meanOmega_approx(dangle,tdisrupt)
+            dO1D= self._meanOmega_approx(dangle,tdisrupt,force_indiv_impacts)
         else:
             if not norm:
                 denom= super(streampepperdf,self)._density_par(dangle)
@@ -582,18 +620,20 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
                 *self._sigMeanSign
 
-    def _meanOmega_approx(self,dangle,tdisrupt):
+    def _meanOmega_approx(self,dangle,tdisrupt,force_indiv_impacts):
         """Compute the mean frequency as a function of parallel angle using the
         spline representations"""
-        ul,da,ti,c0,c1= self._approx_pdf(dangle)
+        ul,da,ti,c0,c1= self._approx_pdf(dangle,force_indiv_impacts)
         # Get the density in various forms
-        dens_arr= self._density_par_approx(dangle,tdisrupt,True,
+        dens_arr= self._density_par_approx(dangle,tdisrupt,force_indiv_impacts,
+                                           True,
                                            ul,da,ti,c0,c1)
-        dens= self._density_par_approx(dangle,tdisrupt,False,
-                                       ul,da,ti,c0,c1)
+        dens= self._density_par_approx(dangle,tdisrupt,force_indiv_impacts,
+                                       False,ul,da,ti,c0,c1)
         # Compute numerator using the approximate PDF
         # Find the lower limit of the integration interval
-        lowbindx,lowx,edge= self.minOpar(dangle,False,True,ul,da,ti,c0,c1)
+        lowbindx,lowx,edge= self.minOpar(dangle,False,force_indiv_impacts,True,
+                                         ul,da,ti,c0,c1)
         ul[lowbindx-1]= ul[lowbindx]-lowx
         # Integrate each interval
         out= numpy.sum(((ul+(self._meandO+c0-ul)/c1)*dens_arr
