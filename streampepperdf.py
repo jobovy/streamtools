@@ -156,8 +156,14 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         impact_angles[impact_angles <= 0.]= 0.1
         if not self._gap_leading: impact_angles*= -1.
         # Keep GM and rs the same for now
-        GMs= numpy.array([self._GM[0] for a in impact_angles])
-        rss= numpy.array([self._rs[0] for a in impact_angles])
+        try:
+            GMs= numpy.array([self._GM[0] for a in impact_angles])
+            rss= numpy.array([self._rs[0] for a in impact_angles])
+        except IndexError: #HACK
+            from galpy.util import bovy_conversion
+            GMs= numpy.array([10.**-2./bovy_conversion.mass_in_1010msol(220.,8.)
+                              for a in impact_angles])
+            rss= numpy.array([0.625/8. for a in impact_angles])
         # impact b
         impactbs= numpy.random.uniform(size=len(impact_angles))**0.5\
             *2.*rss
@@ -254,7 +260,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._subhalopot= [subhalopot[ii] for ii in sortIndx]
         # For _approx_pdf, also combine kicks that occur at same time
         self._sgapdfs_uniq= []
-        for ti in self._uniq_timpact:
+        self._uniq_timpact_sim= sorted(list(set(self._timpact)))
+        for ti in self._uniq_timpact_sim:
             sgdfc= self._combine_deltav_kicks(ti)
             # compute the kick using the pre-computed coordinate transformation
             sgdfc._determine_deltaOmegaTheta_kick(self._spline_order)
@@ -340,6 +347,9 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         approx= use faster method that directly integrates the spline
         representations
         force_indiv_impacts= (False) in approx, explicitly use each individual impact at a given time rather than their combined impact at that time (should give the same)"""
+        if len(self._timpact) == 0:
+            return super(streampepperdf,self)._density_par(dangle,
+                                                           tdisrupt=tdisrupt)
         if tdisrupt is None: tdisrupt= self._tdisrupt
         if approx:
             return self._density_par_approx(dangle,tdisrupt,
@@ -399,7 +409,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             timpact= self._timpact
         else:
             sgapdfs= self._sgapdfs_uniq
-            timpact= self._uniq_timpact
+            timpact= self._uniq_timpact_sim
         # First construct the breakpoints for the last impact for this dangle,
         # and start on the upper limits
         Oparb= (dangle-sgapdfs[0]._kick_interpdOpar_poly.x)\
@@ -593,6 +603,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            2015-11-17 - Written - Bovy (UofT)
 
         """
+        if len(self._timpact) == 0:
+            out= super(streampepperdf,self).meanOmega(dangle,
+                                                      tdisrupt=tdisrupt,
+                                                      oned=oned)
+            if not norm:
+                return out*super(streampepperdf,self)._density_par(dangle,
+                                                                   tdisrupt=tdisrupt)
+            else:
+                return out
         if tdisrupt is None: tdisrupt= self._tdisrupt
         if approx:
             dO1D= self._meanOmega_approx(dangle,tdisrupt,force_indiv_impacts)
