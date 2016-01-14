@@ -117,7 +117,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                               timpact,GM,rs,subhalopot)
         return None
 
-    def simulate(self,rate=1.):
+    def simulate(self,rate=1.,
+                 sample_GM=None,sample_rs=None):
         """
         NAME:
         
@@ -130,6 +131,10 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         INPUT:
 
            rate= (1.) 
+
+           sample_GM= (None) function that returns a sample GM (no arguments)
+
+           sample_rs= (None) function that returns a sample rs as a function of GM
 
         OUTPUT:
 
@@ -166,14 +171,14 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         impact_angles[impact_angles < 0.]= 10.**-6.
         if not self._gap_leading: impact_angles*= -1.
         # Keep GM and rs the same for now
-        try:
-            GMs= numpy.array([self._GM[0] for a in impact_angles])
-            rss= numpy.array([self._rs[0] for a in impact_angles])
-        except IndexError: #HACK
-            from galpy.util import bovy_conversion
-            GMs= numpy.array([10.**-2.2/bovy_conversion.mass_in_1010msol(220.,8.)
-                              for a in impact_angles])
-            rss= numpy.array([0.625/8. for a in impact_angles])
+        if sample_GM is None:
+            raise ValueError("sample_GM keyword to simulate must be specified")
+        else:
+            GMs= numpy.array([sample_GM() for a in impact_angles])
+        if sample_rs is None:
+            raise ValueError("sample_rs keyword to simulate must be specified")
+        else:
+            rss= numpy.array([sample_rs(gm) for gm in GMs])
         # impact b
         impactbs= numpy.random.uniform(size=len(impact_angles))**0.5\
             *2.*rss
