@@ -4,6 +4,7 @@ import numpy
 from scipy import integrate, special, stats, optimize
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
+from galpy.util import bovy_conversion
 class streampepperdf(galpy.df_src.streamdf.streamdf):
     """The DF of a tidal stream peppered with impacts"""
     def __init__(self,*args,**kwargs):
@@ -22,15 +23,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            Subhalo and impact parameters, for all impacts:
 
-              impactb= impact parameter ([nimpact])
+              timpact= time since impact ([nimpact]); needs to be set
 
-              subhalovel= velocity of the subhalo shape=(nimpact,3)
+              impact_angle= angle offset from progenitor at which the impact occurred (at the impact time; in rad) ([nimpact]); optional
 
-              impact_angle= angle offset from progenitor at which the impact occurred (at the impact time; in rad) ([nimpact])
+              impactb= impact parameter ([nimpact]); optional
 
-              timpact time since impact ([nimpact])
+              subhalovel= velocity of the subhalo shape=(nimpact,3); optional
 
-              Subhalo: specify either 1( mass and size of Plummer sphere or 2( general spherical-potential object (kick is numerically computed); all kicks need to chose the same option
+              Subhalo: specify either 1( mass and size of Plummer sphere or 2( general spherical-potential object (kick is numerically computed); all kicks need to chose the same option; optional keywords
 
                  1( GM= mass of the subhalo ([nimpact])
 
@@ -56,16 +57,28 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
         """
         # Parse kwargs, everything except for timpact can be arrays
-        impactb= kwargs.pop('impactb',[1.])
-        subhalovel= kwargs.pop('subhalovel',numpy.array([[0.,1.,0.]]))
-        impact_angle= kwargs.pop('impact_angle',[1.])
+        timpact= kwargs.pop('timpact',[1.])
+        impactb= kwargs.pop('impactb',None)
+        if impactb is None:
+            sim_setup= True # we're just getting ready to run sims
+            impactb= [0. for t in timpact]
+        else: sim_setup= False
+        subhalovel= kwargs.pop('subhalovel',
+                               numpy.array([[0.,1.,0.] for t in timpact]))
+        impact_angle= kwargs.pop('impact_angle',
+                                 numpy.array([1. for t in timpact]))
         GM= kwargs.pop('GM',None)
         rs= kwargs.pop('rs',None)
         subhalopot= kwargs.pop('subhalopot',None)
+        if GM is None and rs is None and subhalopot is None:
+            # If none given, just use a small impact to get the coord. 
+            # transform set up (use 220 and 8 for now, switch to config later)
+            GM= [10**-5./bovy_conversion.mass_in_1010msol(220.,8.)
+                 for t in timpact]
+            rs= [0.04/8. for t in timpact]
         if GM is None: GM= [None for b in impactb]
         if rs is None: rs= [None for b in impactb]
         if subhalopot is None: subhalopot= [None for b in impactb]
-        timpact= kwargs.pop('timpact',[1.])
         deltaAngleTrackImpact= kwargs.pop('deltaAngleTrackImpact',None)
         nTrackChunksImpact= kwargs.pop('nTrackChunksImpact',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
@@ -89,6 +102,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # stream track (nosetup=True)
         kwargs['nosetup']= True
         super(streampepperdf,self).__init__(*args,**kwargs)
+        # Adjust the angles
+        if not self._leading and sim_setup: impact_angle*= -1.
         # Setup streamgapdf objects to setup the machinery to go between 
         # (x,v) and (Omega,theta) near the impacts
         self._uniq_timpact= sorted(list(set(timpact)))
