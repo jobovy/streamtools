@@ -147,13 +147,23 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                               size=int(numpy.ceil(rate))))\
                                               /rate
         angles= angles[angles < 1.]*self._deltaAngleTrack
-        # Times and rewind impact angles
-        timpacts= [self._uniq_timpact[0] for a in angles]
+        # Sample times 
+        timpacts= [numpy.random.uniform()\
+                       *a/super(streampepperdf,self).meanOmega(a,oned=True)\
+                       for a in angles]
+        # Snap timpacts to grid of timpacts; adjust angles for this adjustement
+        snap_timpacts= [self._uniq_timpact[\
+                numpy.argmin(numpy.fabs(ti-numpy.array(self._uniq_timpact)))]
+                        for ti in timpacts]
+        angles= [a+(sti-ti)*super(streampepperdf,self).meanOmega(a,oned=True)
+                 for a,sti,ti in zip(angles,snap_timpacts,timpacts)]
+        # Rewind impact angles
+        timpacts= snap_timpacts
         impact_angles= numpy.array(\
             [a-t*super(streampepperdf,self).meanOmega(a,oned=True)
              for a,t in zip(angles,timpacts)])
-        # BOVY: FOR NOW=>
-        impact_angles[impact_angles <= 0.]= 0.1
+        # can have light issues bc of diff. meanOmega at adjusted angle
+        impact_angles[impact_angles < 0.]= 10.**-6.
         if not self._gap_leading: impact_angles*= -1.
         # Keep GM and rs the same for now
         try:
@@ -161,7 +171,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             rss= numpy.array([self._rs[0] for a in impact_angles])
         except IndexError: #HACK
             from galpy.util import bovy_conversion
-            GMs= numpy.array([10.**-2./bovy_conversion.mass_in_1010msol(220.,8.)
+            GMs= numpy.array([10.**-2.2/bovy_conversion.mass_in_1010msol(220.,8.)
                               for a in impact_angles])
             rss= numpy.array([0.625/8. for a in impact_angles])
         # impact b
