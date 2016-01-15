@@ -573,9 +573,10 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         lowx= ((ul-c0)*(self._tdisrupt-self._timpact[-1])+ul*ti-da)\
             /((self._tdisrupt-self._timpact[-1])*c1+ti)
         nlowx= lowx/(ul-numpy.roll(ul,1))
-        nlowx[lowx < 0.]= numpy.inf
-        lowbindx= numpy.argmin(nlowx)
-        lowbindx= numpy.arange(len(ul))[lowbindx]
+        nlowx[0]*= -1. #need to adjust sign bc of roll
+        lowbindx= numpy.argmax((lowx >= 0.)*(nlowx <= 10.)) # not too crazy
+        if lowbindx > 0 and -nlowx[lowbindx-1] < nlowx[lowbindx]:
+            lowbindx-= 1
         edge= False
         if lowbindx == 0: # edge case
             lowbindx= 1
