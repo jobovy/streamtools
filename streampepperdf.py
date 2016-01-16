@@ -1,7 +1,7 @@
 # The DF of a tidal stream peppered with impacts
 import copy
 import numpy
-from scipy import integrate, special, stats, optimize
+from scipy import integrate, special, stats, optimize, interpolate
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
 from galpy.util import bovy_conversion
@@ -308,6 +308,87 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         for kk in kickIndx[1:]:
             sgdfc._kick_deltav+= self._sgapdfs[kk]._kick_deltav
         return sgdfc
+
+    def approx_kicks(self,threshold,relative=True):
+        """
+        NAME:
+           approx_kicks
+        PURPOSE:
+           Remove parts of the interpolated kicks that can be neglected, for self._sgapdfs_uniq
+        INPUT:
+           threshold - remove parts of *individual* kicks in Opar below this threshold
+           relative= (True) whether the threshold is relative or absolute (in dOpar)
+        OUTPUT:
+           (none; just adjusts the internal kicks; there is no way back)
+        HISTORY:
+           2016-01-16 - Written - Bovy (UofT)
+        """
+        for ii,ti in enumerate(self._uniq_timpact_sim):
+            # Find all the kicks that occur at timpact
+            kickIndx= numpy.where(self._timpact == ti)[0]
+            keepIndx= numpy.zeros(\
+                len(self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1]),
+                dtype='bool')
+            tx= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[:-1]
+            range_tx= numpy.arange(len(tx))
+            for kk in kickIndx:
+                # Only keep those above threshold or between peaks, first 
+                # find peaks
+                relKick=\
+                    numpy.fabs(self._sgapdfs[kk]._kick_interpdOpar(tx))
+                peakLeftIndx=\
+                    numpy.argmax(relKick/numpy.amax(relKick)\
+                                     *(tx <= self._sgapdfs[kk]._impact_angle))
+                peakRightIndx=\
+                    numpy.argmax(relKick/numpy.amax(relKick)\
+                                     *(tx > self._sgapdfs[kk]._impact_angle))
+                if relative:
+                    relKick/= numpy.amax(relKick)
+                keepIndx+= (relKick >= threshold)\
+                    +((range_tx >= peakLeftIndx)*(range_tx <= peakRightIndx))
+            # Only keep those in keepIndx
+            self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,True-keepIndx]=\
+                0.
+            self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-2,True-keepIndx]=\
+                0.
+            c12= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1]\
+                *self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-2]
+            nzIndx= numpy.nonzero((c12 != 0.)+(numpy.roll(c12,1)-c12 != 0.)\
+                                      +(range_tx == 0))[0]
+            nzIndx= numpy.nonzero((c12 != 0.)+(numpy.roll(c12,1)-c12 != 0.)\
+                                      +(numpy.roll(c12,2)-c12 != 0.)\
+                                      +(c12-numpy.roll(c12,-1) != 0.)\
+                                      +(range_tx == 0))[0]
+            # Linearly interpolate over dropped ranges
+            droppedIndx= numpy.nonzero(((c12 == 0.)\
+                                           *(numpy.roll(c12,1)-c12 != 0.))\
+                                           +((c12 == 0.)*(range_tx == 0)))[0]
+            for dd in droppedIndx:
+                if dd == 0:
+                    prevx= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[0]
+                    prevVal= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,0]
+                else:
+                    self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,dd]=\
+                        self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,dd-1]+(self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[dd]-self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[dd-1])*self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-2,dd-1]
+                    prevx= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[dd]
+                    prevVal= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,dd]
+                nextIndx= list(nzIndx).index(dd)
+                if nextIndx == len(nzIndx)-1:
+                    nextx= self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[-1]
+                    nextVal= 0.
+                else:
+                    nextIndx= nzIndx[nextIndx+1]
+                    nextx=\
+                        self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[nextIndx]
+                    nextVal=\
+                        self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,nextIndx]
+                print nextVal, prevVal, nextx, prevx
+                self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-2,dd]=\
+                    (nextVal-prevVal)/(nextx-prevx)
+            self._sgapdfs_uniq[ii]._kick_interpdOpar_poly= interpolate.PPoly(\
+                self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[:,nzIndx],
+                self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[numpy.hstack((nzIndx,[len(tx)]))])
+        return None
 
     def pOparapar(self,Opar,apar):
         """
