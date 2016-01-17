@@ -382,7 +382,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                         self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[nextIndx]
                     nextVal=\
                         self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-1,nextIndx]
-                print nextVal, prevVal, nextx, prevx
                 self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.c[-2,dd]=\
                     (nextVal-prevVal)/(nextx-prevx)
             self._sgapdfs_uniq[ii]._kick_interpdOpar_poly= interpolate.PPoly(\
