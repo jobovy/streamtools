@@ -83,12 +83,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         nTrackChunksImpact= kwargs.pop('nTrackChunksImpact',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
         spline_order= kwargs.pop('spline_order',3)
-        # For setup later
-        nTrackChunks= kwargs.pop('nTrackChunks',None)
-        interpTrack= kwargs.pop('interpTrack',
-                                galpy.df_src.streamdf._INTERPDURINGSETUP)
-        useInterp= kwargs.pop('useInterp',
-                              galpy.df_src.streamdf._USEINTERP)
         # Analytical Plummer or general potential?
         self._general_kick= GM[0] is None or rs[0] is None
         if self._general_kick and numpy.any([sp is None for sp in subhalopot]):
@@ -109,6 +103,23 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._uniq_timpact= sorted(list(set(timpact)))
         self._sgapdfs_coordtransform= {}
         for ti in self._uniq_timpact:
+            sgapdf_kwargs= copy.deepcopy(kwargs)
+            sgapdf_kwargs['timpact']= ti
+            sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
+            if not self._leading: sgapdf_kwargs['impact_angle']= -1.
+            sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
+            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
+            sgapdf_kwargs['nKickPoints']= nKickPoints
+            sgapdf_kwargs['spline_order']= spline_order
+            sgapdf_kwargs['GM']= GM[0] # Just to avoid error
+            sgapdf_kwargs['rs']= rs[0] 
+            sgapdf_kwargs['subhalopot']= subhalopot[0]
+            sgapdf_kwargs['nokicksetup']= True
+            self._sgapdfs_coordtransform[ti]=\
+                galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+        # Also setup coordtransform for the current time, for transforming
+        if not 0. in self._uniq_timpact:
+            ti= 0.
             sgapdf_kwargs= copy.deepcopy(kwargs)
             sgapdf_kwargs['timpact']= ti
             sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
