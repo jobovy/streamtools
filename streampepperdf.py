@@ -39,6 +39,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
                  2( subhalopot= galpy potential object or list thereof (should be spherical); list of len nimpact (if the individual potentials are lists, need to give a list of lists)
 
+                 3( hernquist= (False) if True, use Hernquist kicks for GM/rs
+
            deltaAngleTrackImpact= (None) angle to estimate the stream track over to determine the effect of the impact [similar to deltaAngleTrack] (rad)
 
            nTrackChunksImpact= (floor(deltaAngleTrack/0.15)+1) number of chunks to divide the progenitor track in near the impact [similar to nTrackChunks]
@@ -70,6 +72,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         GM= kwargs.pop('GM',None)
         rs= kwargs.pop('rs',None)
         subhalopot= kwargs.pop('subhalopot',None)
+        hernquist= kwargs.pop('hernquist',False)
         if GM is None and rs is None and subhalopot is None:
             # If none given, just use a small impact to get the coord. 
             # transform set up (use 220 and 8 for now, switch to config later)
@@ -111,6 +114,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
             sgapdf_kwargs['nKickPoints']= nKickPoints
             sgapdf_kwargs['spline_order']= spline_order
+            sgapdf_kwargs['hernquist']= hernquist
             sgapdf_kwargs['GM']= GM[0] # Just to avoid error
             sgapdf_kwargs['rs']= rs[0] 
             sgapdf_kwargs['subhalopot']= subhalopot[0]
@@ -128,6 +132,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
             sgapdf_kwargs['nKickPoints']= nKickPoints
             sgapdf_kwargs['spline_order']= spline_order
+            sgapdf_kwargs['hernquist']= hernquist
             sgapdf_kwargs['GM']= GM[0] # Just to avoid error
             sgapdf_kwargs['rs']= rs[0] 
             sgapdf_kwargs['subhalopot']= subhalopot[0]
@@ -139,6 +144,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Compute all kicks
         self._nKickPoints= nKickPoints
         self._spline_order= spline_order
+        self.hernquist= hernquist
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
         return None
@@ -287,7 +293,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgdf._determine_deltav_kick(impact_angle[kk],impactb[kk],
                                         subhalovel[kk],
                                         GM[kk],rs[kk],subhalopot[kk],
-                                        self._nKickPoints,self._spline_order)
+                                        self._nKickPoints,self._spline_order,
+                                        self.hernquist)
             sgdf._determine_deltaOmegaTheta_kick(self._spline_order)
             self._sgapdfs.append(sgdf)
         # Store impact parameters
