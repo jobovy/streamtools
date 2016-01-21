@@ -152,7 +152,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
     def simulate(self,rate=1.,
                  sample_GM=None,sample_rs=None,
-                 Xrs=2.):
+                 Xrs=2.,max_apar=None,sigma=150./220.):
         """
         NAME:
         
@@ -172,6 +172,10 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            
            Xrs= (2.) consider impact parameters up to X rs
 
+           max_apar= (self.length()) maximum parallel angle for impacts (at current time)
+
+           sigma= (150/220) velocity dispersion of the DM subhalo population
+
         OUTPUT:
 
            (none; just sets up the instance for the new set of impacts)
@@ -182,12 +186,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
         """
         # Sample impact parameters
+        if max_apar is None:
+            self._timpact= [] # reset, so density going into length is smooth
+            max_apar= self.length()
         # angle, just use Weibull for now
         angles=\
             numpy.cumsum(numpy.random.weibull(2.,
                                               size=int(numpy.ceil(rate))))\
                                               /rate
-        angles= angles[angles < 1.]*self._deltaAngleTrack
+        angles= angles[angles < 1.]*max_apar
         # Sample times 
         timpacts= [numpy.random.uniform()\
                        *a/super(streampepperdf,self).meanOmega(a,oned=True)\
@@ -218,7 +225,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # impact b
         impactbs= numpy.random.uniform(size=len(impact_angles))*Xrs*rss
         # velocity
-        subhalovels= numpy.random.normal(scale=150./self._Vnorm,
+        subhalovels= numpy.random.normal(scale=sigma,
                                          size=(len(impact_angles),3))
         # Setup
         self.set_impacts(impact_angle=impact_angles,
