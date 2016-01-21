@@ -1,7 +1,8 @@
 # The DF of a tidal stream peppered with impacts
 import copy
+import hashlib
 import numpy
-from scipy import integrate, special, stats, optimize, interpolate
+from scipy import integrate, special, stats, optimize, interpolate, signal
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
 from galpy.util import bovy_conversion
@@ -68,7 +69,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         subhalovel= kwargs.pop('subhalovel',
                                numpy.array([[0.,1.,0.] for t in timpact]))
         impact_angle= kwargs.pop('impact_angle',
-                                 numpy.array([1. for t in timpact]))
+                                 numpy.array([0.0001 for t in timpact]))
         GM= kwargs.pop('GM',None)
         rs= kwargs.pop('rs',None)
         subhalopot= kwargs.pop('subhalopot',None)
@@ -816,6 +817,51 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                               -numpy.exp(-0.5*(ul[0]-self._meandO)**2.
                                           /self._sortedSigOEig[2])))
         return out/dens
+
+################################# STATISTICS ##################################
+    def _structure_hash(self,digit,apars):
+        return hashlib.md5(numpy.hstack(([digit],apars,self._impact_angle)))\
+            .hexdigest()
+    def csd(self,d1='density',d2='density',
+            apars=None):
+        if d1.lower() == 'density' or d2.lower() == 'density':
+            new_hash= self._structure_hash(1,apars)
+            if hasattr(self,'_dens_hash') and new_hash == self._dens_hash:
+                dens= self._dens
+                dens_unp= self._dens_unp
+            else:
+                dens= numpy.array([self.density_par(a) for a in apars])
+                dens_unp= numpy.array([\
+                        super(galpy.df_src.streampepperdf.streampepperdf,self)\
+                            ._density_par(a) for a in apars])
+                # Store in case they are needed again
+                self._dens_hash= new_hash
+                self._dens= dens
+                self._dens_unp= dens_unp
+        if d1.lower() == 'meanomega' or d2.lower() == 'meanomega':
+            new_hash= self._structure_hash(2,apars)
+            if hasattr(self,'_mO_hash') and new_hash == self._mO_hash:
+                mO= self._mO
+                mO_unp= self._mO_unp
+            else:
+                mO= numpy.array([self.meanOmega(a,oned=True) 
+                                 for a in apars])
+                mO_unp= numpy.array([\
+                        super(galpy.df_src.streampepperdf.streampepperdf,self)\
+                            .meanOmega(a,oned=True) for a in apars])
+                # Store in case they are needed again
+                self._mO_hash= new_hash
+                self._mO= mO
+                self._mO_unp= mO_unp
+        if d1.lower() == 'density':
+            x= dens/dens_unp/numpy.sum(dens)*numpy.sum(dens_unp)
+        elif d1.lower() == 'meanomega':
+            x= mO/mO_unp
+        if d2.lower() == 'density':
+            y= dens/dens_unp/numpy.sum(dens)*numpy.sum(dens_unp)
+        elif d2.lower() == 'meanomega':
+            y= mO/mO_unp
+        return signal.csd(x,y,fs=1./(apars[1]-apars[0]),scaling='spectrum')
 
 ################################SAMPLE THE DF##################################
     def _sample_aAt(self,n):
