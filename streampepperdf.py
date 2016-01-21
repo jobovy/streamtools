@@ -150,7 +150,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         return None
 
     def simulate(self,rate=1.,
-                 sample_GM=None,sample_rs=None):
+                 sample_GM=None,sample_rs=None,
+                 Xrs=2.):
         """
         NAME:
         
@@ -167,6 +168,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            sample_GM= (None) function that returns a sample GM (no arguments)
 
            sample_rs= (None) function that returns a sample rs as a function of GM
+           
+           Xrs= (2.) consider impact parameters up to X rs
 
         OUTPUT:
 
@@ -212,7 +215,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         else:
             rss= numpy.array([sample_rs(gm) for gm in GMs])
         # impact b
-        impactbs= numpy.random.uniform(size=len(impact_angles))*2.*rss
+        impactbs= numpy.random.uniform(size=len(impact_angles))*Xrs*rss
         # velocity
         subhalovels= numpy.random.normal(scale=150./self._Vnorm,
                                          size=(len(impact_angles),3))
