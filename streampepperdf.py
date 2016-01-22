@@ -152,7 +152,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
     def simulate(self,rate=1.,
                  sample_GM=None,sample_rs=None,
-                 Xrs=2.,max_apar=None,sigma=150./220.):
+                 Xrs=3.,max_apar=None,sigma=150./220.):
         """
         NAME:
         
@@ -170,7 +170,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            sample_rs= (None) function that returns a sample rs as a function of GM
            
-           Xrs= (2.) consider impact parameters up to X rs
+           Xrs= (3.) consider impact parameters up to X rs
 
            max_apar= (self.length()) maximum parallel angle for impacts (at current time)
 
