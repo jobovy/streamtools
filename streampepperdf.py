@@ -143,7 +143,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._gap_leading=\
             self._sgapdfs_coordtransform[timpact[0]]._gap_leading
         # Compute all kicks
-        self._nKickPoints= nKickPoints
         self._spline_order= spline_order
         self.hernquist= hernquist
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
@@ -152,7 +151,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
     def simulate(self,rate=1.,
                  sample_GM=None,sample_rs=None,
-                 Xrs=3.,max_apar=None,sigma=150./220.):
+                 Xrs=3.,max_apar=None,sigma=120./220.):
         """
         NAME:
         
@@ -174,7 +173,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            max_apar= (self.length()) maximum parallel angle for impacts (at current time)
 
-           sigma= (150/220) velocity dispersion of the DM subhalo population
+           sigma= (120/220) velocity dispersion of the DM subhalo population
 
         OUTPUT:
 
@@ -212,7 +211,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
              for a,t in zip(angles,timpacts)])
         # can have light issues bc of diff. meanOmega at adjusted angle
         impact_angles[impact_angles < 0.]= 10.**-6.
-        if not self._gap_leading: impact_angles*= -1.
         # Keep GM and rs the same for now
         if sample_GM is None:
             raise ValueError("sample_GM keyword to simulate must be specified")
@@ -225,15 +223,51 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # impact b
         impactbs= numpy.random.uniform(size=len(impact_angles))*Xrs*rss
         # velocity
-        subhalovels= numpy.random.normal(scale=sigma,
-                                         size=(len(impact_angles),3))
+        subhalovels= numpy.empty((len(impact_angles),3))
+        for ii in range(len(timpacts)):
+            subhalovels[ii]=\
+                self._draw_impact_velocities(timpacts[ii],sigma,
+                                             impact_angles[ii],n=1)[0]
+        # Flip angle sign if necessary
+        if not self._gap_leading: impact_angles*= -1.
         # Setup
         self.set_impacts(impact_angle=impact_angles,
                          impactb=impactbs,
-                         subhalovel= subhalovels,
+                         subhalovel=subhalovels,
                          timpact=timpacts,
                          GM=GMs,rs=rss)
         return None
+
+    def _draw_impact_velocities(self,timpact,sigma,impact_angle,n=1):
+        """Draw impact velocities from the distribution relative to the stream
+        at this time"""
+        # Along the stream and tangential to the stream are Gaussian
+        vy= numpy.random.normal(scale=sigma,size=n)
+        vt= numpy.random.normal(scale=sigma,size=n)
+        # cylindrical radial is minus Rayleigh
+        vr= -numpy.random.rayleigh(scale=sigma,size=n)
+        # build vx and vy
+        theta= numpy.random.uniform(size=n)*2.*numpy.pi
+        vx= vr*numpy.cos(theta)-vt*numpy.sin(theta)
+        vz= vr*numpy.sin(theta)+vt*numpy.cos(theta)
+        out= numpy.array([vx,vy,vz]).T
+        # Now rotate wrt stream frame
+        self._sgapdfs_coordtransform[timpact]._impact_angle= impact_angle
+        self._sgapdfs_coordtransform[timpact]\
+            ._interpolate_stream_track_kick(self._spline_order)
+        streamDir= numpy.array([self._sgapdfs_coordtransform[timpact]\
+                                    ._kick_interpTrackvX(impact_angle),
+                                self._sgapdfs_coordtransform[timpact]\
+                                    ._kick_interpTrackvY(impact_angle),
+                                self._sgapdfs_coordtransform[timpact]\
+                                    ._kick_interpTrackvZ(impact_angle)])
+        # Build the rotation matrices and their inverse
+        rotinv= \
+            galpy.df_src.streamgapdf._rotation_vy(streamDir[:,numpy.newaxis].T,
+                                                  inv=True)[0]
+        out= numpy.sum(\
+            rotinv*numpy.swapaxes(numpy.tile(out.T,(3,1,1)).T,1,2),axis=-1)
+        return out
 
     def set_impacts(self,**kwargs):
         """
@@ -303,7 +337,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgdf._determine_deltav_kick(impact_angle[kk],impactb[kk],
                                         subhalovel[kk],
                                         GM[kk],rs[kk],subhalopot[kk],
-                                        self._nKickPoints,self._spline_order,
+                                        self._spline_order,
                                         self.hernquist)
             sgdf._determine_deltaOmegaTheta_kick(self._spline_order)
             self._sgapdfs.append(sgdf)
