@@ -149,7 +149,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                               timpact,GM,rs,subhalopot)
         return None
 
-    def simulate(self,rate=1.,
+    def simulate(self,nimpact=None,rate=1.,
                  sample_GM=None,sample_rs=None,
                  Xrs=3.,max_apar=None,sigma=120./220.):
         """
@@ -163,7 +163,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
         INPUT:
 
-           rate= (1.) 
+           For the number of impacts, specify either:
+           
+              nimpact= (None) number of impacts; if not set, fall back on rate
+
+              rate= (1.) expected number of impacts
 
            sample_GM= (None) function that returns a sample GM (no arguments)
 
@@ -188,12 +192,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if max_apar is None:
             self._timpact= [] # reset, so density going into length is smooth
             max_apar= self.length()
-        # angle, just use Weibull for now
-        angles=\
-            numpy.cumsum(numpy.random.weibull(2.,
-                                              size=int(numpy.ceil(rate))))\
-                                              /rate
-        angles= angles[angles < 1.]*max_apar
+        # Number of impacts
+        if nimpact is None:
+            nimpact= numpy.random.poisson(rate)
+        # angle, just use propto angle for now
+        angles= numpy.sqrt(numpy.random.uniform(size=nimpact))*max_apar
         # Sample times 
         timpacts= [numpy.random.uniform()\
                        *a/super(streampepperdf,self).meanOmega(a,oned=True)\
