@@ -147,6 +147,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self.hernquist= hernquist
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
+        # Pre-compute age of stream vs. angle for simulation, assuming 
+        # meanOmega evolution
+        da= numpy.linspace(0.,self._deltaAngleTrack,201)
+        mt= numpy.array([a/super(streampepperdf,self).meanOmega(a,oned=True)
+                         for a in da])
+        self._meandat= interpolate.InterpolatedUnivariateSpline(mt,da,k=3)
+        # Pre-compute relative probability of different times
+        self._ptimpact= (self._tdisrupt-numpy.array(self._uniq_timpact))
+        self._ptimpact/= numpy.sum(self._ptimpact)
         return None
 
     def simulate(self,nimpact=None,rate=1.,
@@ -195,25 +204,17 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Number of impacts
         if nimpact is None:
             nimpact= numpy.random.poisson(rate)
-        # angle, just use propto angle for now
-        angles= numpy.sqrt(numpy.random.uniform(size=nimpact))*max_apar
-        # Sample times 
-        timpacts= [numpy.random.uniform()\
-                       *a/super(streampepperdf,self).meanOmega(a,oned=True)\
-                       for a in angles]
-        # Snap timpacts to grid of timpacts; adjust angles for this adjustement
-        snap_timpacts= [self._uniq_timpact[\
-                numpy.argmin(numpy.fabs(ti-numpy.array(self._uniq_timpact)))]
-                        for ti in timpacts]
-        angles= [a+(sti-ti)*super(streampepperdf,self).meanOmega(a,oned=True)
-                 for a,sti,ti in zip(angles,snap_timpacts,timpacts)]
+        # Sample times propto td-time
+        timpacts= numpy.array(self._uniq_timpact)[\
+            numpy.random.choice(len(self._uniq_timpact),size=nimpact,
+                                p=self._ptimpact)]
+        # Sample angles from the part of the stream that existed then
+        angles= numpy.random.uniform(size=nimpact)\
+            *(max_apar-self._meandat(timpacts))+self._meandat(timpacts)
         # Rewind impact angles
-        timpacts= snap_timpacts
         impact_angles= numpy.array(\
             [a-t*super(streampepperdf,self).meanOmega(a,oned=True)
              for a,t in zip(angles,timpacts)])
-        # can have light issues bc of diff. meanOmega at adjusted angle
-        impact_angles[impact_angles < 0.]= 10.**-6.
         # Keep GM and rs the same for now
         if sample_GM is None:
             raise ValueError("sample_GM keyword to simulate must be specified")
