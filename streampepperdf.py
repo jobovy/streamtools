@@ -147,20 +147,56 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self.hernquist= hernquist
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
-        # Pre-compute age of stream vs. angle for simulation, assuming 
-        # meanOmega evolution
-        da= numpy.linspace(0.,self._deltaAngleTrack,201)
-        mt= numpy.array([a/super(streampepperdf,self).meanOmega(a,oned=True)
-                         for a in da])
-        self._meandat= interpolate.InterpolatedUnivariateSpline(mt,da,k=3)
-        # Pre-compute relative probability of different times
-        self._ptimpact= (self._tdisrupt-numpy.array(self._uniq_timpact))
+        # Pre-compute probability of different times and angles ~ length
+        self._setup_timeAndAngleSampling()
+        return None
+
+    def _setup_timeAndAngleSampling(self):
+        """Function that computes the length of the stream at the different potential impact times, to determine relative probability of the stream being hit at those times (and the relative probability of different segments at that time)"""
+        # Loop through uniq_timpact, determining length of stream
+        self._stream_len= {}
+        self._icdf_stream_len= {}
+        # Need to turn off timpact to get smooth density for length here
+        store_timpact= self._timpact
+        self._timpact= [] # reset, so density going into length is smooth
+        for ti in self._uniq_timpact:
+            # Determine total length in apar
+            max_apar= self.length(tdisrupt=self._tdisrupt-ti)
+            # Setup the interpolation at the impact time
+            self._sgapdfs_coordtransform[ti]._impact_angle= 0.1 # dummy
+            self._sgapdfs_coordtransform[ti]\
+                ._interpolate_stream_track_kick(self._spline_order)
+            # Determine length of different segments
+            dXda= self._sgapdfs_coordtransform[ti]._kick_interpTrackX\
+                .derivative()
+            dYda= self._sgapdfs_coordtransform[ti]._kick_interpTrackY\
+                .derivative()
+            dZda= self._sgapdfs_coordtransform[ti]._kick_interpTrackZ\
+                .derivative()
+            apars= numpy.linspace(0.,max_apar,
+                                  self._sgapdfs_coordtransform[ti]._nKickPoints)
+            cumul_stream_len= numpy.hstack((0.,numpy.array([\
+                    integrate.quad(lambda da: numpy.sqrt(dXda(da)**2.\
+                                                             +dYda(da)**2.\
+                                                             +dZda(da)**2.),
+                                   al,au)[0] for al,au in zip(apars[:-1],
+                                                              apars[1:])])))
+            cumul_stream_len= numpy.cumsum(cumul_stream_len)
+            self._stream_len[ti]= cumul_stream_len[-1]
+            self._icdf_stream_len[ti]=\
+                interpolate.InterpolatedUnivariateSpline(\
+                cumul_stream_len/cumul_stream_len[-1],apars,k=3)
+        # Now determine relative probability of different times
+        self._ptimpact= numpy.array([self._stream_len[ti]
+                                     for ti in self._uniq_timpact])
         self._ptimpact/= numpy.sum(self._ptimpact)
+        # Restore timpact
+        self._timpact= store_timpact
         return None
 
     def simulate(self,nimpact=None,rate=1.,
                  sample_GM=None,sample_rs=None,
-                 Xrs=3.,max_apar=None,sigma=120./220.):
+                 Xrs=3.,sigma=120./220.):
         """
         NAME:
         
@@ -184,8 +220,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            
            Xrs= (3.) consider impact parameters up to X rs
 
-           max_apar= (self.length()) maximum parallel angle for impacts (at current time)
-
            sigma= (120/220) velocity dispersion of the DM subhalo population
 
         OUTPUT:
@@ -197,10 +231,6 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
            2015-12-14 - Written - Bovy (UofT)
 
         """
-        # Sample impact parameters
-        if max_apar is None:
-            self._timpact= [] # reset, so density going into length is smooth
-            max_apar= self.length()
         # Number of impacts
         if nimpact is None:
             nimpact= numpy.random.poisson(rate)
@@ -209,12 +239,9 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             numpy.random.choice(len(self._uniq_timpact),size=nimpact,
                                 p=self._ptimpact)]
         # Sample angles from the part of the stream that existed then
-        angles= numpy.random.uniform(size=nimpact)\
-            *(max_apar-self._meandat(timpacts))+self._meandat(timpacts)
-        # Rewind impact angles
-        impact_angles= numpy.array(\
-            [a-t*super(streampepperdf,self).meanOmega(a,oned=True)
-             for a,t in zip(angles,timpacts)])
+        impact_angles= numpy.array([\
+                self._icdf_stream_len[ti](numpy.random.uniform())
+                for ti in timpacts])
         # Keep GM and rs the same for now
         if sample_GM is None:
             raise ValueError("sample_GM keyword to simulate must be specified")
