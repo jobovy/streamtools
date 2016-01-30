@@ -928,11 +928,13 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if d1.lower() == 'density':
             x= dens/dens_unp/numpy.sum(dens)*numpy.sum(dens_unp)
         elif d1.lower() == 'meanomega':
-            x= mO/mO_unp
+            x= (self._progenitor_Omega_along_dOmega+mO)\
+                /(self._progenitor_Omega_along_dOmega+mO_unp)
         if d2.lower() == 'density':
             y= dens/dens_unp/numpy.sum(dens)*numpy.sum(dens_unp)
         elif d2.lower() == 'meanomega':
-            y= mO/mO_unp
+            y= (self._progenitor_Omega_along_dOmega+mO)\
+                /(self._progenitor_Omega_along_dOmega+mO_unp)
         return signal.csd(x,y,fs=1./(apars[1]-apars[0]),scaling='spectrum')
 
 ################################SAMPLE THE DF##################################
