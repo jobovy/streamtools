@@ -568,6 +568,14 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                   -1.,1.,
                                   limit=100,epsabs=1.e-06,epsrel=1.e-06)[0]\
                                   *smooth_dens
+    def _densityAndOmega_par_approx(self,dangle):
+        """Convenience function  to return both, avoiding doubling the computational time"""
+        # First get the approximate PD
+        ul,da,ti,c0,c1= self._approx_pdf(dangle,False)
+        return (self._density_par_approx(dangle,self._tdisrupt,False,False,
+                                    ul,da,ti,c0,c1),
+                self._meanOmega_approx(dangle,self._tdisrupt,False,
+                                       ul,da,ti,c0,c1))
 
     def _density_par_approx(self,dangle,tdisrupt,
                             force_indiv_impacts,
@@ -843,10 +851,15 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             return self._progenitor_Omega+dO1D*self._dsigomeanProgDirection\
                 *self._sigMeanSign
 
-    def _meanOmega_approx(self,dangle,tdisrupt,force_indiv_impacts):
+    def _meanOmega_approx(self,dangle,tdisrupt,force_indiv_impacts,
+                          *args):
         """Compute the mean frequency as a function of parallel angle using the
         spline representations"""
-        ul,da,ti,c0,c1= self._approx_pdf(dangle,force_indiv_impacts)
+        if len(args) == 0:
+            ul,da,ti,c0,c1= self._approx_pdf(dangle,force_indiv_impacts)
+        else:
+            ul,da,ti,c0,c1= args
+            ul= copy.copy(ul)
         # Get the density in various forms
         dens_arr= self._density_par_approx(dangle,tdisrupt,force_indiv_impacts,
                                            True,
