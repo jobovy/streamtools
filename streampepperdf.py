@@ -5,7 +5,7 @@ import numpy
 from scipy import integrate, special, stats, optimize, interpolate, signal
 import galpy.df_src.streamdf
 import galpy.df_src.streamgapdf
-from galpy.util import bovy_conversion
+from galpy.util import bovy_conversion, bovy_coords
 class streampepperdf(galpy.df_src.streamdf.streamdf):
     """The DF of a tidal stream peppered with impacts"""
     def __init__(self,*args,**kwargs):
@@ -46,6 +46,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            nTrackChunksImpact= (floor(deltaAngleTrack/0.15)+1) number of chunks to divide the progenitor track in near the impact [similar to nTrackChunks]
 
+           nTrackChunks= (floor(deltaAngleTrack/0.15)+1) number of chunks to divide the progenitor track in at the observation time
+
            nKickPoints= (10xnTrackChunksImpact) number of points along the stream to compute the kicks at (kicks are then interpolated)
 
            spline_order= (3) order of the spline to interpolate the kicks with
@@ -85,6 +87,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if subhalopot is None: subhalopot= [None for b in impactb]
         deltaAngleTrackImpact= kwargs.pop('deltaAngleTrackImpact',None)
         nTrackChunksImpact= kwargs.pop('nTrackChunksImpact',None)
+        nTrackChunks= kwargs.pop('nTrackChunks',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
         spline_order= kwargs.pop('spline_order',3)
         # Analytical Plummer or general potential?
@@ -112,7 +115,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
             if not self._leading: sgapdf_kwargs['impact_angle']= -1.
             sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
-            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
+            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunks
             sgapdf_kwargs['nKickPoints']= nKickPoints
             sgapdf_kwargs['spline_order']= spline_order
             sgapdf_kwargs['hernquist']= hernquist
@@ -130,16 +133,42 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
             if not self._leading: sgapdf_kwargs['impact_angle']= -1.
             sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
-            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
+            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunks
             sgapdf_kwargs['nKickPoints']= nKickPoints
             sgapdf_kwargs['spline_order']= spline_order
             sgapdf_kwargs['hernquist']= hernquist
-            sgapdf_kwargs['GM']= GM[0] # Just to avoid error
+            sgapdf_kwargs['GM']= 0. # Just to avoid error
             sgapdf_kwargs['rs']= rs[0] 
             sgapdf_kwargs['subhalopot']= subhalopot[0]
             sgapdf_kwargs['nokicksetup']= True
             self._sgapdfs_coordtransform[ti]=\
                 galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+            # Grab sgapdfs_coordtransform[0]'s coordinate transformation 
+            # for that for the current time
+            self._sgapdfs_coordtransform[ti]._impact_angle= 0.
+            self._sgapdfs_coordtransform[ti].\
+                _interpolate_stream_track_kick()
+            self._sgapdfs_coordtransform[ti].\
+                _interpolate_stream_track_kick_aA()
+            self._interpolatedObsTrack=\
+                self._sgapdfs_coordtransform[ti]._kick_interpolatedObsTrack
+            self._ObsTrack= self._sgapdfs_coordtransform[ti]._gap_ObsTrack
+            self._interpolatedObsTrackXY= \
+                self._sgapdfs_coordtransform[ti]._kick_interpolatedObsTrackXY
+            self._ObsTrackXY= self._sgapdfs_coordtransform[ti]._gap_ObsTrackXY
+            self._alljacsTrack=\
+                self._sgapdfs_coordtransform[ti]._gap_alljacsTrack
+            self._allinvjacsTrack=\
+                self._sgapdfs_coordtransform[ti]._gap_allinvjacsTrack
+            self._interpolatedObsTrackAA=\
+                self._sgapdfs_coordtransform[ti]._kick_interpolatedObsTrackAA
+            self._ObsTrackAA= self._sgapdfs_coordtransform[ti]._gap_ObsTrackAA
+            self._interpolatedThetasTrack=\
+                self._sgapdfs_coordtransform[ti]._kick_interpolatedThetasTrack
+            self._thetasTrack=\
+                self._sgapdfs_coordtransform[ti]._gap_thetasTrack
+            self._nTrackChunks=\
+                self._sgapdfs_coordtransform[ti]._nTrackChunksImpact
         self._gap_leading=\
             self._sgapdfs_coordtransform[timpact[0]]._gap_leading
         # Compute all kicks
@@ -165,7 +194,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             # Setup the interpolation at the impact time
             self._sgapdfs_coordtransform[ti]._impact_angle= 0.1 # dummy
             self._sgapdfs_coordtransform[ti]\
-                ._interpolate_stream_track_kick(self._spline_order)
+                ._interpolate_stream_track_kick()
             # Determine length of different segments
             dXda= self._sgapdfs_coordtransform[ti]._kick_interpTrackX\
                 .derivative()
@@ -286,7 +315,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         # Now rotate wrt stream frame
         self._sgapdfs_coordtransform[timpact]._impact_angle= impact_angle
         self._sgapdfs_coordtransform[timpact]\
-            ._interpolate_stream_track_kick(self._spline_order)
+            ._interpolate_stream_track_kick()
         streamDir= numpy.array([self._sgapdfs_coordtransform[timpact]\
                                     ._kick_interpTrackvX(impact_angle),
                                 self._sgapdfs_coordtransform[timpact]\
@@ -904,6 +933,66 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                               -numpy.exp(-0.5*(ul[0]-self._meandO)**2.
                                           /self._sortedSigOEig[2])))
         return out/dens
+
+    def meanTrack(self,dangle,approx=True,force_indiv_impacts=False,
+                  RvR=False,_mO=None):
+        """
+        NAME:
+
+           meanTrack
+
+        PURPOSE:
+
+           calculate the mean track in configuration space as a function of angle, assuming a uniform time distribution up to a maximum time
+
+        INPUT:
+
+           dangle - angle offset
+
+           approx= (True) if True, compute the mean Omega by direct integration of the spline representation
+
+           force_indiv_impacts= (False) if True, explicitly use the streamgapdf object of each individual impact; otherwise combine impacts at the same time (should give the same result)
+
+           RvR= (False) if True return [R,vR,vT,z,vz,phi]
+
+           _mO= (None) if set, this is the oned meanOmega at dangle (in case this has already been computed)
+
+        OUTPUT:
+
+           mean track (dangle): [6]
+
+        HISTORY:
+
+           2016-02-22 - Written - Bovy (UofT)
+
+        """
+        if _mO is None:
+            _mO= self.meanOmega(dangle,oned=True,approx=approx,
+                                force_indiv_impacts=force_indiv_impacts)
+        # Go to 3D omega and 3D angle
+        _mO= numpy.atleast_1d(_mO)
+        dangle= numpy.atleast_1d(dangle)
+        mO= numpy.tile(self._progenitor_Omega,(_mO.shape[0],1)).T\
+            +_mO*numpy.tile(self._dsigomeanProgDirection,(_mO.shape[0],1)).T\
+            *self._sigMeanSign
+        da= numpy.tile(self._progenitor_angle,(_mO.shape[0],1)).T\
+            +dangle\
+            *numpy.tile(self._dsigomeanProgDirection,(_mO.shape[0],1)).T\
+            *self._sigMeanSign
+        # Convert to configuration space using Jacobian
+        out= self._approxaAInv(mO[0],mO[1],mO[2],da[0],da[1],da[2])
+        if RvR:
+            return out
+        XY= numpy.zeros_like(out)
+        XY[0]= out[0]*numpy.cos(out[5])
+        XY[1]= out[0]*numpy.sin(out[5])
+        XY[2]= out[3]
+        TrackvX, TrackvY, TrackvZ=\
+            bovy_coords.cyl_to_rect_vec(out[1],out[2],out[4],out[5])
+        XY[3]= TrackvX
+        XY[4]= TrackvY
+        XY[5]= TrackvZ
+        return XY
 
 ################################# STATISTICS ##################################
     def _structure_hash(self,digit,apars):
