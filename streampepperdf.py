@@ -115,7 +115,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['impact_angle']= impact_angle[0]#only affects a check
             if not self._leading: sgapdf_kwargs['impact_angle']= -1.
             sgapdf_kwargs['deltaAngleTrackImpact']= deltaAngleTrackImpact
-            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunks
+            sgapdf_kwargs['nTrackChunksImpact']= nTrackChunksImpact
             sgapdf_kwargs['nKickPoints']= nKickPoints
             sgapdf_kwargs['spline_order']= spline_order
             sgapdf_kwargs['hernquist']= hernquist
@@ -935,7 +935,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         return out/dens
 
     def meanTrack(self,dangle,approx=True,force_indiv_impacts=False,
-                  RvR=False,_mO=None):
+                  coord='XY',_mO=None):
         """
         NAME:
 
@@ -953,7 +953,11 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            force_indiv_impacts= (False) if True, explicitly use the streamgapdf object of each individual impact; otherwise combine impacts at the same time (should give the same result)
 
-           RvR= (False) if True return [R,vR,vT,z,vz,phi]
+           coord= ('XY') coordinates to output: 
+                  'XY' for rectangular Galactocentric
+                  'RvR' for cylindrical Galactocentric
+                  'lb' for Galactic longitude/latitude
+                  'custom' for custom sky coordinates
 
            _mO= (None) if set, this is the oned meanOmega at dangle (in case this has already been computed)
 
@@ -981,8 +985,9 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             *self._sigMeanSign
         # Convert to configuration space using Jacobian
         out= self._approxaAInv(mO[0],mO[1],mO[2],da[0],da[1],da[2])
-        if RvR:
+        if coord.lower() == 'rvr':
             return out
+        # Go Galactocentric rectangular
         XY= numpy.zeros_like(out)
         XY[0]= out[0]*numpy.cos(out[5])
         XY[1]= out[0]*numpy.sin(out[5])
@@ -992,7 +997,23 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         XY[3]= TrackvX
         XY[4]= TrackvY
         XY[5]= TrackvZ
-        return XY
+        if coord.lower() == 'xy':
+            return XY
+        # Go to Galactic spherical
+        XYZ= bovy_coords.galcenrect_to_XYZ(XY[0]*self._Rnorm,
+                                           XY[1]*self._Rnorm,
+                                           XY[2]*self._Rnorm,
+                                           Xsun=self._R0,Zsun=self._Zsun)
+        vXYZ= bovy_coords.galcenrect_to_vxvyvz(XY[3]*self._Vnorm,
+                                               XY[4]*self._Vnorm,
+                                               XY[5]*self._Vnorm,
+                                               vsun=self._vsun)
+        lbd= bovy_coords.XYZ_to_lbd(XYZ[0],XYZ[1],XYZ[2],degree=True)
+        vlbd= bovy_coords.vxvyvz_to_vrpmllpmbb(vXYZ[0],vXYZ[1],vXYZ[2],
+                                               lbd[:,0],lbd[:,1],lbd[:,2],
+                                               degree=True)
+        if coord.lower() == 'lb':
+            return numpy.hstack((lbd,vlbd)).T
 
 ################################# STATISTICS ##################################
     def _structure_hash(self,digit,apars):
