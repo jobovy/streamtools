@@ -194,6 +194,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._timpact= store_timpact
         return None
 
+############################## SIMULATION FUNCTIONS ###########################
     def simulate(self,nimpact=None,rate=1.,
                  sample_GM=None,sample_rs=None,
                  Xrs=3.,sigma=120./220.):
@@ -482,6 +483,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 self._sgapdfs_uniq[ii]._kick_interpdOpar_poly.x[numpy.hstack((nzIndx,[len(tx)]))])
         return None
 
+############################ PHASE-SPACE DF FUNCTIONS #########################
     def pOparapar(self,Opar,apar):
         """
         NAME:
