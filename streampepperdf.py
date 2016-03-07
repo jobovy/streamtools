@@ -52,6 +52,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
 
            spline_order= (3) order of the spline to interpolate the kicks with
 
+           length_factor= (1.) consider impacts up to length_factor x length of the stream
+
         OUTPUT:
 
            object
@@ -90,6 +92,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         nTrackChunks= kwargs.pop('nTrackChunks',None)
         nKickPoints= kwargs.pop('nKickPoints',None)
         spline_order= kwargs.pop('spline_order',3)
+        length_factor= kwargs.pop('length_factor',1.)
         # Analytical Plummer or general potential?
         self._general_kick= GM[0] is None or rs[0] is None
         if self._general_kick and numpy.any([sp is None for sp in subhalopot]):
@@ -177,11 +180,12 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._determine_deltaOmegaTheta_kicks(impact_angle,impactb,subhalovel,
                                               timpact,GM,rs,subhalopot)
         # Pre-compute probability of different times and angles ~ length
-        self._setup_timeAndAngleSampling()
+        self._setup_timeAndAngleSampling(length_factor)
         return None
 
-    def _setup_timeAndAngleSampling(self):
+    def _setup_timeAndAngleSampling(self,length_factor):
         """Function that computes the length of the stream at the different potential impact times, to determine relative probability of the stream being hit at those times (and the relative probability of different segments at that time)"""
+        self._length_factor= length_factor
         # Loop through uniq_timpact, determining length of stream
         self._stream_len= {}
         self._icdf_stream_len= {}
@@ -190,7 +194,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         self._timpact= [] # reset, so density going into length is smooth
         for ti in self._uniq_timpact:
             # Determine total length in apar
-            max_apar= self.length(tdisrupt=self._tdisrupt-ti)
+            max_apar= self.length(tdisrupt=self._tdisrupt-ti)\
+                *self._length_factor
             # Setup the interpolation at the impact time
             self._sgapdfs_coordtransform[ti]._impact_angle= 0.1 # dummy
             self._sgapdfs_coordtransform[ti]\
