@@ -287,7 +287,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         else:
             rss= numpy.array([sample_rs(gm) for gm in GMs])
         # impact b
-        impactbs= numpy.random.uniform(size=len(impact_angles))*Xrs*rss
+        impactbs= (2.*numpy.random.uniform(size=len(impact_angles))-1.)*Xrs*rss
         # velocity
         subhalovels= numpy.empty((len(impact_angles),3))
         for ii in range(len(timpacts)):
