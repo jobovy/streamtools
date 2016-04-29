@@ -1005,13 +1005,13 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         if coord.lower() == 'xy':
             return XY
         # Go to Galactic spherical
-        XYZ= bovy_coords.galcenrect_to_XYZ(XY[0]*self._Rnorm,
-                                           XY[1]*self._Rnorm,
-                                           XY[2]*self._Rnorm,
+        XYZ= bovy_coords.galcenrect_to_XYZ(XY[0]*self._ro,
+                                           XY[1]*self._ro,
+                                           XY[2]*self._ro,
                                            Xsun=self._R0,Zsun=self._Zsun)
-        vXYZ= bovy_coords.galcenrect_to_vxvyvz(XY[3]*self._Vnorm,
-                                               XY[4]*self._Vnorm,
-                                               XY[5]*self._Vnorm,
+        vXYZ= bovy_coords.galcenrect_to_vxvyvz(XY[3]*self._vo,
+                                               XY[4]*self._vo,
+                                               XY[5]*self._vo,
                                                vsun=self._vsun)
         lbd= bovy_coords.XYZ_to_lbd(XYZ[0],XYZ[1],XYZ[2],degree=True)
         vlbd= bovy_coords.vxvyvz_to_vrpmllpmbb(vXYZ[0],vXYZ[1],vXYZ[2],
