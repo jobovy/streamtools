@@ -1008,11 +1008,12 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
         XYZ= bovy_coords.galcenrect_to_XYZ(XY[0]*self._ro,
                                            XY[1]*self._ro,
                                            XY[2]*self._ro,
-                                           Xsun=self._R0,Zsun=self._Zsun)
+                                           Xsun=self._R0,Zsun=self._Zsun).T
         vXYZ= bovy_coords.galcenrect_to_vxvyvz(XY[3]*self._vo,
                                                XY[4]*self._vo,
                                                XY[5]*self._vo,
-                                               vsun=self._vsun)
+                                               vsun=self._vsun,
+                                               Xsun=self._R0,Zsun=self._Zsun).T
         lbd= bovy_coords.XYZ_to_lbd(XYZ[0],XYZ[1],XYZ[2],degree=True)
         vlbd= bovy_coords.vxvyvz_to_vrpmllpmbb(vXYZ[0],vXYZ[1],vXYZ[2],
                                                lbd[:,0],lbd[:,1],lbd[:,2],
