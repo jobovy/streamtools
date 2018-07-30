@@ -3,10 +3,10 @@ import copy
 import hashlib
 import numpy
 from scipy import integrate, special, stats, optimize, interpolate, signal
-import galpy.df_src.streamdf
-import galpy.df_src.streamgapdf
+from galpy.df import streamdf, streamgapdf
+from galpy.df.streamgapdf import _rotation_vy
 from galpy.util import bovy_conversion, bovy_coords
-class streampepperdf(galpy.df_src.streamdf.streamdf):
+class streampepperdf(streamdf):
     """The DF of a tidal stream peppered with impacts"""
     def __init__(self,*args,**kwargs):
         """
@@ -126,8 +126,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['rs']= rs[0] 
             sgapdf_kwargs['subhalopot']= subhalopot[0]
             sgapdf_kwargs['nokicksetup']= True
-            self._sgapdfs_coordtransform[ti]=\
-                galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+            self._sgapdfs_coordtransform[ti]= \
+                                            streamgapdf(*args,**sgapdf_kwargs)
         # Also setup coordtransform for the current time, for transforming
         if not 0. in self._uniq_timpact:
             ti= 0.
@@ -145,7 +145,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             sgapdf_kwargs['subhalopot']= subhalopot[0]
             sgapdf_kwargs['nokicksetup']= True
             self._sgapdfs_coordtransform[ti]=\
-                galpy.df_src.streamgapdf.streamgapdf(*args,**sgapdf_kwargs)
+                                            streamgapdf(*args,**sgapdf_kwargs)
             # Grab sgapdfs_coordtransform[0]'s coordinate transformation 
             # for that for the current time
             self._sgapdfs_coordtransform[ti]._impact_angle= 0.
@@ -328,9 +328,8 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                                 self._sgapdfs_coordtransform[timpact]\
                                     ._kick_interpTrackvZ(impact_angle)])
         # Build the rotation matrices and their inverse
-        rotinv= \
-            galpy.df_src.streamgapdf._rotation_vy(streamDir[:,numpy.newaxis].T,
-                                                  inv=True)[0]
+        rotinv= _rotation_vy(streamDir[:,numpy.newaxis].T,
+                             inv=True)[0]
         out= numpy.sum(\
             rotinv*numpy.swapaxes(numpy.tile(out.T,(3,1,1)).T,1,2),axis=-1)
         return out
@@ -1035,7 +1034,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
             else:
                 dens= numpy.array([self.density_par(a) for a in apars])
                 dens_unp= numpy.array([\
-                        super(galpy.df_src.streampepperdf.streampepperdf,self)\
+                        super(galpy.df.streampepperdf.streampepperdf,self)\
                             ._density_par(a) for a in apars])
                 # Store in case they are needed again
                 self._dens_hash= new_hash
@@ -1050,7 +1049,7 @@ class streampepperdf(galpy.df_src.streamdf.streamdf):
                 mO= numpy.array([self.meanOmega(a,oned=True) 
                                  for a in apars])
                 mO_unp= numpy.array([\
-                        super(galpy.df_src.streampepperdf.streampepperdf,self)\
+                        super(galpy.df.streampepperdf.streampepperdf,self)\
                             .meanOmega(a,oned=True) for a in apars])
                 # Store in case they are needed again
                 self._mO_hash= new_hash
