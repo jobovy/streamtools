@@ -1,4 +1,5 @@
 from . import streampepperdf
+from . import streamspraydf
 #
 # Functions
 #
@@ -7,3 +8,4 @@ from . import streampepperdf
 # Classes
 #
 streampepperdf= streampepperdf.streampepperdf
+streamspraydf= streamspraydf.streamspraydf
