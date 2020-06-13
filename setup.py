@@ -13,5 +13,5 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     license='MIT',
     packages=["streamtools","streamtools/df"],
-    install_requires=['galpy']
+    install_requires=['numpy>=1.7','scipy','galpy']
     )
