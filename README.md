@@ -2,6 +2,7 @@
 Tools for modeling and analyzing stellar streams
 
 [![Documentation Status](https://readthedocs.org/projects/streamtools/badge/?version=latest)](https://streamtools.readthedocs.io/en/latest/?badge=latest)
+[![image](http://img.shields.io/pypi/v/streamtools.svg)](https://pypi.python.org/pypi/streamtools/)
 
 
 ## Development
