@@ -9,7 +9,7 @@ _APY_LOADED= bovy_conversion._APY_LOADED
 if _APY_LOADED:
     from astropy import units
 class streamspraydf(df):
-    def __init__(self,progenitor_mass,progenitor=None,pot=None,rtpot=None,
+    def __init__(self,progenitor_mass,progenitor,pot,rtpot=None,
                  tdisrupt=None,leading=True,
                  meankvec=[2.,0.,0.3,0.,0.,0.],
                  sigkvec=[0.4,0.,0.4,0.5,0.5,0.],
@@ -26,18 +26,18 @@ class streamspraydf(df):
 
            progenitor_mass - mass of the progenitor (can be Quantity)
 
+           progenitor= progenitor orbit as Orbit instance (will be re-integrated, so don't bother integrating the orbit before)
+
+           pot= potential for integrating orbits
+
            tdisrupt= (5 Gyr) time since start of disruption (can be Quantity)
 
            leading= (True) if True, model the leading part of the stream
                            if False, model the trailing part
 
-           progenitor= progenitor orbit as Orbit instance (will be re-integrated, so don't bother integrating the orbit before)
-           
            meankvec= (Fardal+2015-ish defaults) 
            
            sigkvec= (Fardal+2015-ish defaults) 
-
-           pot = (None) potential for integrating orbits
            
            rtpot = (pot) potential for calculating tidal radius and circular velocity
 
@@ -62,10 +62,9 @@ class streamspraydf(df):
                 tdisrupt= tdisrupt.to(units.Gyr).value\
                     /bovy_conversion.time_in_Gyr(self._vo,self._ro)
             self._tdisrupt= tdisrupt
-        if pot is None: #pragma: no cover
-            raise IOError("pot= must be set")
+
         self._pot= flatten_potential(pot)
-        self._rtpot=self._pot if rtpot is None else flatten_potential(rtpot)
+        self._rtpot= self._pot if rtpot is None else flatten_potential(rtpot)
 
         self._progenitor= progenitor()
         self._progenitor_times= numpy.linspace(0.,-self._tdisrupt,10001)
