@@ -14,6 +14,7 @@ else:
 _APY_LOADED= conversion._APY_LOADED
 if _APY_LOADED:
     from astropy import units
+
 class streamspraydf(df):
     def __init__(self,progenitor_mass,progenitor=None,
                  pot=None,rtpot=None,
@@ -137,19 +138,19 @@ class streamspraydf(df):
         rot, rot_inv= self._setup_rot(dt)
         # Compute progenitor position in the instantaneous frame,
         # relative to the center orbit if necessary
-        centerx= self._progenitor.x(-dt)
-        centery= self._progenitor.y(-dt)
-        centerz= self._progenitor.z(-dt)
-        centervx= self._progenitor.vx(-dt)
-        centervy= self._progenitor.vy(-dt)
-        centervz= self._progenitor.vz(-dt)
+        centerx= self._progenitor.x(-dt, use_physical=False)
+        centery= self._progenitor.y(-dt, use_physical=False)
+        centerz= self._progenitor.z(-dt, use_physical=False)
+        centervx= self._progenitor.vx(-dt, use_physical=False)
+        centervy= self._progenitor.vy(-dt, use_physical=False)
+        centervz= self._progenitor.vz(-dt, use_physical=False)
         if not self._center is None:
-            centerx-= self._center.x(-dt)
-            centery-= self._center.y(-dt)
-            centerz-= self._center.z(-dt)
-            centervx-= self._center.vx(-dt)
-            centervy-= self._center.vy(-dt)
-            centervz-= self._center.vz(-dt)       
+            centerx-= self._center.x(-dt, use_physical=False)
+            centery-= self._center.y(-dt, use_physical=False)
+            centerz-= self._center.z(-dt, use_physical=False)
+            centervx-= self._center.vx(-dt, use_physical=False)
+            centervy-= self._center.vy(-dt, use_physical=False)
+            centervz-= self._center.vz(-dt, use_physical=False)
         xyzpt= numpy.einsum('ijk,ik->ij',rot,
                             numpy.array([centerx,centery,centerz]).T)
         vxyzpt= numpy.einsum('ijk,ik->ij',rot,
@@ -192,12 +193,12 @@ class streamspraydf(df):
         absvy= vxyzs[:,1]
         absvz= vxyzs[:,2]
         if not self._center is None:
-            absx+= self._center.x(-dt)
-            absy+= self._center.y(-dt)
-            absz+= self._center.z(-dt)
-            absvx+= self._center.vx(-dt)
-            absvy+= self._center.vy(-dt)
-            absvz+= self._center.vz(-dt)
+            absx+= self._center.x(-dt, use_physical=False)
+            absy+= self._center.y(-dt, use_physical=False)
+            absz+= self._center.z(-dt, use_physical=False)
+            absvx+= self._center.vx(-dt, use_physical=False)
+            absvy+= self._center.vy(-dt, use_physical=False)
+            absvz+= self._center.vz(-dt, use_physical=False)
         Rs,phis,Zs= coords.rect_to_cyl(absx,absy,absz)
         vRs,vTs,vZs= coords.rect_to_cyl_vec(absvx,absvy,absvz,
                                                  Rs,phis,Zs,cyl=True)
@@ -223,19 +224,19 @@ class streamspraydf(df):
 
     def _setup_rot(self,dt):
         n= len(dt)
-        centerx= self._progenitor.x(-dt)
-        centery= self._progenitor.y(-dt)
-        centerz= self._progenitor.z(-dt)
+        centerx= self._progenitor.x(-dt, use_physical=False)
+        centery= self._progenitor.y(-dt, use_physical=False)
+        centerz= self._progenitor.z(-dt, use_physical=False)
         if self._center is None:
-            L= self._progenitor.L(-dt)
+            L= self._progenitor.L(-dt, use_physical=False)
         # Compute relative angular momentum to the center orbit
         else:
-            centerx-= self._center.x(-dt)
-            centery-= self._center.y(-dt)
-            centerz-= self._center.z(-dt)
-            centervx= self._progenitor.vx(-dt)-self._center.vx(-dt)
-            centervy= self._progenitor.vy(-dt)-self._center.vy(-dt)
-            centervz= self._progenitor.vz(-dt)-self._center.vz(-dt)
+            centerx-= self._center.x(-dt, use_physical=False)
+            centery-= self._center.y(-dt, use_physical=False)
+            centerz-= self._center.z(-dt, use_physical=False)
+            centervx= self._progenitor.vx(-dt, use_physical=False)-self._center.vx(-dt, use_physical=False)
+            centervy= self._progenitor.vy(-dt, use_physical=False)-self._center.vy(-dt, use_physical=False)
+            centervz= self._progenitor.vz(-dt, use_physical=False)-self._center.vz(-dt, use_physical=False)
             L= numpy.array([centery*centervz-centerz*centervy,
                             centerz*centervx-centerx*centervz,
                             centerx*centervy-centery*centervx]).T
