@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="streamtools",
-    version="0.1.dev2",
+    version="0.1.dev3",
     author="Jo Bovy",
     author_email="bovy@astro.utoronto.ca",
     description="Tools for modeling and analyzing stellar streams",
